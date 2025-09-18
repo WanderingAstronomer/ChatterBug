@@ -1,0 +1,25 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Editor/OS files
+*.swp
+*~
+.DS_Store
+.idea/
+.vscode/
+
+# Logs
+*.log
+
+# Development diary
+DEVDIARY.md
+
+# ChatterBug Design Documentation
+chatterbug_design_doc.md
