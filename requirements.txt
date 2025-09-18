@@ -1,0 +1,12 @@
+# core runtime
+numpy
+sounddevice
+soundfile
+
+# ASR backends (install GPU variants as needed)
+faster-whisper
+torch
+
+# utilities
+psutil
+pytest

@@ -22,7 +22,7 @@ ChatterBug is a Linux-first, Python-based offline speech-to-text utility for sin
 3. Use the UI to record, transcribe, and copy transcripts
 
 Notes:
-- System packages: on Debian/Ubuntu install `sudo apt install portaudio19-dev libsndfile1-dev`.
+- System packages: on Debian/Ubuntu install `sudo apt install portaudio19-dev libsndfile1`.
 - If you plan to use GPU acceleration, ensure appropriate NVIDIA drivers and CUDA toolkits are installed.
 
 Config & data paths:
