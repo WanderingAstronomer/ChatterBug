@@ -7,6 +7,7 @@ __pycache__/
 .venv/
 venv/
 ENV/
+.chatterbug_venv/
 
 # Editor/OS files
 *.swp
@@ -20,6 +21,3 @@ ENV/
 
 # Development diary
 DEVDIARY.md
-
-# ChatterBug Design Documentation
-chatterbug_design_doc.md
