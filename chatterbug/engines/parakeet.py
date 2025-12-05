@@ -4,7 +4,7 @@ import os
 import tempfile
 import wave
 from pathlib import Path
-from typing import List, TYPE_CHECKING
+from typing import List
 
 from chatterbug.domain.model import (
     DEFAULT_MODEL_CACHE_DIR,
@@ -16,17 +16,7 @@ from chatterbug.domain.model import (
 from chatterbug.domain.exceptions import DependencyError, EngineError
 from chatterbug.engines.model_registry import normalize_model_name
 
-if TYPE_CHECKING:
-    from chatterbug.engines.factory import register_engine
 
-
-# Avoid circular import: only import register_engine when not type checking
-def _register_parakeet():
-    from chatterbug.engines.factory import register_engine
-    return register_engine("parakeet_rnnt")
-
-
-@_register_parakeet()
 class ParakeetEngine(TranscriptionEngine):
     """Experimental offline Parakeet RNNT engine backed by NeMo models cached locally."""
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterable, TYPE_CHECKING
+from typing import Iterable
 
 from chatterbug.domain.model import (
     AudioChunk,
@@ -14,17 +14,7 @@ from chatterbug.domain.model import (
 from chatterbug.domain.exceptions import DependencyError
 from chatterbug.engines.model_registry import normalize_model_name
 
-if TYPE_CHECKING:
-    from chatterbug.engines.factory import register_engine
 
-
-# Avoid circular import: only import register_engine when not type checking
-def _register_voxtral():
-    from chatterbug.engines.factory import register_engine
-    return register_engine("voxtral")
-
-
-@_register_voxtral()
 class VoxtralEngine(TranscriptionEngine):
     """Voxtral smart-mode engine for audio understanding."""
 

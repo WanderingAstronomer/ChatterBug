@@ -3,11 +3,14 @@ import pytest
 
 from chatterbug.domain.model import EngineConfig, TranscriptionEngine
 from chatterbug.domain.exceptions import ConfigurationError
-from chatterbug.engines.factory import ENGINE_REGISTRY, build_engine, register_engine
+from chatterbug.engines.factory import ENGINE_REGISTRY, build_engine, _register_engines
 
 
 def test_engine_registry_contains_all_engines():
     """Test that all expected engines are registered."""
+    # Trigger registration
+    _register_engines()
+    
     assert "whisper_turbo" in ENGINE_REGISTRY
     assert "voxtral" in ENGINE_REGISTRY
     assert "parakeet_rnnt" in ENGINE_REGISTRY
@@ -15,6 +18,9 @@ def test_engine_registry_contains_all_engines():
 
 def test_engine_registry_stores_classes():
     """Test that registry stores engine classes, not instances."""
+    # Trigger registration
+    _register_engines()
+    
     for engine_kind, engine_class in ENGINE_REGISTRY.items():
         # Should be a class
         assert isinstance(engine_class, type)
@@ -39,73 +45,28 @@ def test_build_engine_with_unknown_kind_raises():
         build_engine("nonexistent_engine", config)  # type: ignore[arg-type]
 
 
-def test_register_engine_decorator_works():
-    """Test that register_engine decorator registers engines correctly."""
-    # Create a test engine class
-    @register_engine("test_engine")  # type: ignore[arg-type]
-    class TestEngine(TranscriptionEngine):
-        def __init__(self, config: EngineConfig):
-            self.config = config
-        
-        def start(self, options):
-            pass
-        
-        def push_audio(self, pcm16: bytes, timestamp_ms: int):
-            pass
-        
-        def flush(self):
-            pass
-        
-        def poll_segments(self):
-            return []
+def test_registry_lazy_initialization():
+    """Test that registry is lazily initialized on first use."""
+    # Clear registry
+    ENGINE_REGISTRY.clear()
     
-    # Should be registered
-    assert "test_engine" in ENGINE_REGISTRY  # type: ignore[comparison-overlap]
-    assert ENGINE_REGISTRY["test_engine"] == TestEngine  # type: ignore[index, comparison-overlap]
+    # Should be empty
+    assert len(ENGINE_REGISTRY) == 0
     
-    # Should be buildable
+    # Building an engine should trigger registration
     config = EngineConfig()
-    engine = build_engine("test_engine", config)  # type: ignore[arg-type]
-    assert isinstance(engine, TestEngine)
+    engine = build_engine("whisper_turbo", config)
     
-    # Cleanup
-    del ENGINE_REGISTRY["test_engine"]  # type: ignore[arg-type]
-
-
-def test_register_engine_returns_class():
-    """Test that register_engine decorator returns the class unchanged."""
-    class DummyEngine(TranscriptionEngine):
-        pass
-    
-    decorator = register_engine("dummy_engine")  # type: ignore[arg-type]
-    result = decorator(DummyEngine)
-    
-    # Should return the same class
-    assert result is DummyEngine
-    
-    # Cleanup
-    if "dummy_engine" in ENGINE_REGISTRY:  # type: ignore[comparison-overlap]
-        del ENGINE_REGISTRY["dummy_engine"]  # type: ignore[arg-type]
-
-
-def test_engine_registry_immutability():
-    """Test that engines cannot be accidentally overwritten without explicit action."""
-    original_engine = ENGINE_REGISTRY["whisper_turbo"]
-    
-    # Attempting to register again should work (overwrite)
-    @register_engine("whisper_turbo")
-    class FakeEngine(TranscriptionEngine):
-        pass
-    
-    # Registry should now have the fake engine
-    assert ENGINE_REGISTRY["whisper_turbo"] == FakeEngine
-    
-    # Restore original
-    ENGINE_REGISTRY["whisper_turbo"] = original_engine
+    # Registry should now be populated
+    assert len(ENGINE_REGISTRY) == 3
+    assert isinstance(engine, TranscriptionEngine)
 
 
 def test_registry_pattern_enables_plugin_architecture():
     """Test that registry pattern enables adding engines dynamically."""
+    # Ensure registry is initialized
+    _register_engines()
+    
     # Define a custom engine at runtime
     class CustomEngine(TranscriptionEngine):
         def __init__(self, config: EngineConfig):
@@ -159,3 +120,15 @@ def test_build_engine_preserves_config():
     assert engine.config.device == "cuda"
     assert engine.config.compute_type in ("float16", "float16")  # May be auto-adjusted
     assert engine.config.params.get("enable_batching") == "true"
+
+
+def test_registry_reinitialization_idempotent():
+    """Test that re-registering engines is idempotent."""
+    _register_engines()
+    original_size = len(ENGINE_REGISTRY)
+    
+    # Re-register
+    _register_engines()
+    
+    # Size should be the same
+    assert len(ENGINE_REGISTRY) == original_size

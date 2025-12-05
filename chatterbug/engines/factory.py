@@ -40,6 +40,10 @@ def build_engine(kind: EngineKind, config: EngineConfig) -> TranscriptionEngine:
     Raises:
         ConfigurationError: If the engine kind is not registered
     """
+    # Lazy import engines if not already registered
+    if not ENGINE_REGISTRY:
+        _register_engines()
+    
     normalized_name = normalize_model_name(kind, config.model_name)
     config = config.model_copy(update={"model_name": normalized_name})
     
@@ -50,8 +54,12 @@ def build_engine(kind: EngineKind, config: EngineConfig) -> TranscriptionEngine:
     return engine_class(config)
 
 
-# Import engines to trigger registration
-# This must be done after register_engine is defined
-from .whisper_turbo import WhisperTurboEngine  # noqa: E402
-from .voxtral import VoxtralEngine  # noqa: E402
-from .parakeet import ParakeetEngine  # noqa: E402
+def _register_engines():
+    """Register all available engines. Called lazily on first use."""
+    from .whisper_turbo import WhisperTurboEngine
+    from .voxtral import VoxtralEngine
+    from .parakeet import ParakeetEngine
+    
+    ENGINE_REGISTRY["whisper_turbo"] = WhisperTurboEngine
+    ENGINE_REGISTRY["voxtral"] = VoxtralEngine
+    ENGINE_REGISTRY["parakeet_rnnt"] = ParakeetEngine

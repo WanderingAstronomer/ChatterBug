@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Iterable, List, Mapping, TYPE_CHECKING
+from typing import Iterable, List, Mapping
 import os
 
 import numpy as np
@@ -20,19 +20,9 @@ from chatterbug.engines.model_registry import normalize_model_name
 from chatterbug.engines.hardware import get_optimal_device, get_optimal_compute_type
 from chatterbug.engines.vad import VadWrapper
 
-if TYPE_CHECKING:
-    from chatterbug.engines.factory import register_engine
-
 logger = logging.getLogger(__name__)
 
 
-# Avoid circular import: only import register_engine when not type checking
-def _register_whisper_turbo():
-    from chatterbug.engines.factory import register_engine
-    return register_engine("whisper_turbo")
-
-
-@_register_whisper_turbo()
 class WhisperTurboEngine(TranscriptionEngine):
     """
     Stateful, push-based faster-whisper adapter with VAD and buffering.
