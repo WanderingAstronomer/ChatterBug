@@ -3,7 +3,7 @@
 import logging
 import structlog
 
-from .transcription_session import TranscriptionSession  # noqa: F401
+from .transcription_session import TranscriptionSession, SessionConfig  # noqa: F401
 
 def configure_logging():
     logging.basicConfig(level=logging.INFO, format="%(message)s")

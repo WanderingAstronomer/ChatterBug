@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import queue
+from dataclasses import dataclass
 from threading import Event, Lock, Thread
 from typing import Optional
 
@@ -22,13 +23,24 @@ from chatterbug.polish.base import Polisher
 
 logger = structlog.get_logger()
 
-# Timeout for graceful thread shutdown
-THREAD_JOIN_TIMEOUT_SEC = 10.0
+
+@dataclass(frozen=True)
+class SessionConfig:
+    """Configuration for TranscriptionSession behavior.
+    
+    These parameters control queue sizes and thread coordination behavior,
+    allowing tuning for different performance/memory tradeoffs.
+    """
+    audio_queue_size: int = 200
+    segment_queue_size: int = 32
+    thread_join_timeout_sec: float = 10.0
+
 
 class TranscriptionSession:
     """Wires an AudioSource into a TranscriptionEngine and pushes results to a sink."""
 
-    def __init__(self) -> None:
+    def __init__(self, config: SessionConfig | None = None) -> None:
+        self._config = config or SessionConfig()
         self._thread: Optional[Thread] = None
         self._threads: list[Thread] = []
         self._stop_event = Event()
@@ -56,8 +68,8 @@ class TranscriptionSession:
             self._stop_event.clear()
             self._exception = None
             self._polisher = polisher
-            self._audio_queue = queue.Queue(maxsize=200) # Increased buffer
-            self._segment_queue = queue.Queue(maxsize=32)
+            self._audio_queue = queue.Queue(maxsize=self._config.audio_queue_size)
+            self._segment_queue = queue.Queue(maxsize=self._config.segment_queue_size)
             self._threads = [
                 Thread(
                     target=self._run_source,
@@ -99,7 +111,7 @@ class TranscriptionSession:
         # Use timeout to prevent hanging indefinitely
         for thread in self._threads:
             if thread.is_alive():
-                thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
+                thread.join(timeout=self._config.thread_join_timeout_sec)
                 if thread.is_alive():
                     logger.warning(f"Thread {thread.name} did not terminate within timeout")
 
