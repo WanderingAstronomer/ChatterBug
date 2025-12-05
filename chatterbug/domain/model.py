@@ -5,6 +5,8 @@ from typing import Iterable, Literal, Mapping, Protocol, Sequence, runtime_check
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .constants import Device, ComputeType
+
 DEFAULT_MODEL_CACHE_DIR = Path.home() / ".cache" / "chatterbug" / "models"
 
 EngineKind = Literal["whisper_turbo", "voxtral", "parakeet_rnnt"]
@@ -63,16 +65,17 @@ class EngineConfig(BaseModel):
     @field_validator("device")
     @classmethod
     def validate_device(cls, v: str) -> str:
-        if v not in ("cpu", "cuda", "auto"):
-            raise ValueError(f"Invalid device: {v}; must be cpu, cuda, or auto")
+        valid_devices = {d.value for d in Device}
+        if v not in valid_devices:
+            raise ValueError(f"Invalid device: {v}; must be one of {', '.join(valid_devices)}")
         return v
 
     @field_validator("compute_type")
     @classmethod
     def validate_compute_type(cls, v: str) -> str:
-        valid_types = ("int8", "int8_float16", "float16", "float32", "fp16", "fp32")
+        valid_types = {ct.value for ct in ComputeType}
         if v not in valid_types:
-            raise ValueError(f"Invalid compute_type: {v}")
+            raise ValueError(f"Invalid compute_type: {v}; must be one of {', '.join(valid_types)}")
         return v
 
 

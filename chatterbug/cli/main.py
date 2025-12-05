@@ -6,7 +6,7 @@ import sys
 
 from chatterbug.app import TranscriptionSession, configure_logging
 from chatterbug.audio.sources import FileSource, MicrophoneSource
-from chatterbug.cli.sinks import ClipboardSink, FileSink, HistorySink, StdoutSink, CompositeSink
+from chatterbug.app.sinks import ClipboardSink, FileSink, HistorySink, StdoutSink, CompositeSink
 from chatterbug.config import load_config
 from chatterbug.domain import EngineConfig, TranscriptionOptions
 from chatterbug.domain.exceptions import (
