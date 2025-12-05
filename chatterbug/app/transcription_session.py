@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import queue
-from threading import Event, Thread
+from threading import Event, Lock, Thread
 from typing import Optional
 
 import structlog
@@ -32,6 +32,7 @@ class TranscriptionSession:
         self._audio_queue: queue.Queue[AudioChunk | object] | None = None
         self._segment_queue: queue.Queue[TranscriptSegment | object] | None = None
         self._polisher: Optional[Polisher] = None
+        self._start_stop_lock = Lock()  # Protect against concurrent start/stop
         # Sentinels to signal stage completion
         self._audio_stop = object()
         self._segment_stop = object()
@@ -45,49 +46,52 @@ class TranscriptionSession:
         engine_kind: EngineKind = "whisper_turbo",
         polisher: Optional[Polisher] = None,
     ) -> None:
-        if any(t.is_alive() for t in self._threads):
-            raise RuntimeError("TranscriptionSession already running")
-        self._stop_event.clear()
-        self._exception = None
-        self._polisher = polisher
-        self._audio_queue = queue.Queue(maxsize=200) # Increased buffer
-        self._segment_queue = queue.Queue(maxsize=32)
-        self._threads = [
-            Thread(
-                target=self._run_source,
-                args=(source,),
-                daemon=True,
-                name="CaptureThread"
-            ),
-            Thread(
-                target=self._run_engine,
-                args=(engine, options),
-                daemon=True,
-                name="EngineThread"
-            ),
-            Thread(
-                target=self._run_sink,
-                args=(sink, engine, engine_kind),
-                daemon=True,
-                name="SinkThread"
-            ),
-        ]
-        for thread in self._threads:
-            thread.start()
+        with self._start_stop_lock:
+            if any(t.is_alive() for t in self._threads):
+                raise RuntimeError("TranscriptionSession already running")
+            self._stop_event.clear()
+            self._exception = None
+            self._polisher = polisher
+            self._audio_queue = queue.Queue(maxsize=200) # Increased buffer
+            self._segment_queue = queue.Queue(maxsize=32)
+            self._threads = [
+                Thread(
+                    target=self._run_source,
+                    args=(source,),
+                    daemon=True,
+                    name="CaptureThread"
+                ),
+                Thread(
+                    target=self._run_engine,
+                    args=(engine, options),
+                    daemon=True,
+                    name="EngineThread"
+                ),
+                Thread(
+                    target=self._run_sink,
+                    args=(sink, engine, engine_kind),
+                    daemon=True,
+                    name="SinkThread"
+                ),
+            ]
+            for thread in self._threads:
+                thread.start()
 
     def stop(self) -> None:
-        self._stop_event.set()
-        # Unblock queues so workers can exit promptly
-        if self._audio_queue is not None:
-            try:
-                self._audio_queue.put_nowait(self._audio_stop)
-            except Exception:
-                pass
-        if self._segment_queue is not None:
-            try:
-                self._segment_queue.put_nowait(self._segment_stop)
-            except Exception:
-                pass
+        with self._start_stop_lock:
+            self._stop_event.set()
+            # Unblock queues so workers can exit promptly
+            if self._audio_queue is not None:
+                try:
+                    self._audio_queue.put_nowait(self._audio_stop)
+                except Exception:
+                    pass
+            if self._segment_queue is not None:
+                try:
+                    self._segment_queue.put_nowait(self._segment_stop)
+                except Exception:
+                    pass
+        # Join threads outside the lock to avoid deadlock
         for thread in self._threads:
             if thread.is_alive():
                 thread.join()
