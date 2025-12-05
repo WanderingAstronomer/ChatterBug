@@ -42,8 +42,8 @@ def transcribe(
     compute_type: str | None = typer.Option(None, help="Compute type (int8, int8_float16, float16)"),
     numexpr_max_threads: int | None = typer.Option(None, help="Limit NumExpr threads (set env NUMEXPR_MAX_THREADS)"),
     word_timestamps: bool = typer.Option(False, help="Enable word-level timestamps for Whisper"),
-    enable_batching: bool = typer.Option(False, help="Enable batched inference for Whisper (default off)"),
-    batch_size: int = typer.Option(1, help="Batch size when batching is enabled for Whisper"),
+    enable_batching: bool = typer.Option(True, help="Enable batched inference for Whisper (default on for files)"),
+    batch_size: int = typer.Option(16, help="Batch size when batching is enabled for Whisper"),
     beam_size: int = typer.Option(5, help="Beam size for Whisper decoding (None to use library default)", show_default=True),
     vad_filter: bool = typer.Option(True, help="Apply VAD filtering before transcription"),
     chunk_ms: int = typer.Option(30000, help="Chunk size for file source (ms); use larger for better context"),
@@ -61,6 +61,8 @@ def transcribe(
     max_new_tokens: int = typer.Option(0, help="Voxtral: max_new_tokens generation limit (0=unset)"),
     gen_temperature: float = typer.Option(0.0, help="Voxtral: temperature (0 uses model default)"),
     clean_disfluencies: bool = typer.Option(False, help="Remove simple disfluencies (stutters/hyphens) in Whisper output"),
+    no_clean_disfluencies: bool = typer.Option(False, help="Disable disfluency cleaning (enabled by default)"),
+    fast: bool = typer.Option(False, help="Enable fast mode: batching, distil-large-v3 for English, beam_size=1, optimized settings"),
     polish: bool | None = typer.Option(
         None,
         help="Enable transcript polishing (local heuristic by default)",
@@ -89,6 +91,17 @@ def transcribe(
         batch_size = max(batch_size, 8)
         beam_size = max(beam_size, 5)
         vad_filter = True
+
+    # Apply --fast mode overrides
+    if fast:
+        enable_batching = True
+        batch_size = max(batch_size, 16)
+        beam_size = 1
+        # Use distil-large-v3 for English unless model is explicitly specified
+        if model is None and language == "en" and engine == "whisper_turbo":
+            model = "distil-whisper/distil-large-v3"
+        # Don't enable word_timestamps in fast mode unless explicitly requested
+        # (word_timestamps stays False by default)
 
     if numexpr_max_threads is None:
         env_threads = config.numexpr_max_threads
@@ -122,7 +135,8 @@ def transcribe(
             "enable_batching": str(enable_batching).lower(),
             "batch_size": str(batch_size),
             "vad_filter": str(vad_filter).lower(),
-            "clean_disfluencies": str(clean_disfluencies).lower(),
+            # Default is true in engine; explicit flags override
+            "clean_disfluencies": str(clean_disfluencies if clean_disfluencies else not no_clean_disfluencies).lower(),
         },
     )
     options = TranscriptionOptions(

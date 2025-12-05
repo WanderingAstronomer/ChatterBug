@@ -19,7 +19,9 @@ Local-first ASR with pluggable engines (Whisper Turbo default, Voxtral smart mod
 
 ## Key behaviors
 - Engines are stateful and push-based: `start()` → `push_audio()` → `flush()` → `poll_segments()`; the CLI/TUI/GUI orchestrate this via `TranscriptionSession`.
-- Whisper Turbo defaults to VAD-trimmed sliding windows, `batch_size=1`, optional BatchedInferencePipeline when `enable_batching=true` in config params, and wraps inference errors as `RuntimeError`.
+- Whisper Turbo defaults to VAD-trimmed sliding windows with batched inference enabled for file transcription (`batch_size=16`). Batching provides 2-4x speedup for non-realtime processing.
+- Default model is `distil-whisper/distil-large-v3` for English (5x faster than large-v3-turbo with similar accuracy).
+- Disfluency cleaning is enabled by default (removes stutters, repeated words, stray hyphens). Use `--no-clean-disfluencies` to disable.
 - Default model/device/precision come from config; the device defaults to CPU unless explicitly set to `cuda` via config or CLI. CUDA uses float16 even when int8 is requested for stability.
 
 ## Configuration
@@ -31,13 +33,15 @@ Local-first ASR with pluggable engines (Whisper Turbo default, Voxtral smart mod
 - `chatterbug transcribe <file>` - Transcribe audio file to stdout
 - `--output <path>` - Write transcript to file
 - `--engine voxtral` or `--engine parakeet_rnnt` - Pick engine (Parakeet RNNT runs locally)
-- `--enable-batching --batch-size N` - Opt into batched Whisper Turbo; defaults to streaming, batch_size=1
+- `--fast` - Enable fast mode: batched inference, distil-large-v3 for English, beam_size=1, optimized settings (tradeoff: speed vs slight accuracy reduction)
+- `--enable-batching --batch-size N` - Control batched Whisper Turbo (enabled by default for files with batch_size=16)
 - `--vad-filter/--no-vad-filter` and `--word-timestamps` - Control VAD trimming and word timing
+- `--no-clean-disfluencies` - Disable disfluency cleaning (enabled by default; removes stutters, repeated words, hyphens)
 - `--polish/--no-polish` and `--polish-model <name>` - Optional transcript polisher (defaults to Qwen2.5-1.5B-Instruct q4_k_m GGUF)
 - `--polish-max-tokens`, `--polish-temperature`, `--polish-gpu-layers`, `--polish-context-length` - Control llama.cpp polish generation
 - `--beam-size`, `--whisper-temperature` - Whisper decode knobs; unset defers to library defaults
 - `--prompt`, `--max-new-tokens`, `--gen-temperature` - Voxtral smart-mode knobs
-- `chatterbug listen` - Live microphone transcription (experimental)
+- `chatterbug listen` - Live microphone transcription (experimental; batching disabled for low latency)
 - `chatterbug check` - Verify prerequisites (ffmpeg, sounddevice)
 
 ## Development

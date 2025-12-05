@@ -58,7 +58,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         self.enable_batching = params.get("enable_batching", "false").lower() == "true"
         self.batch_size = int(params.get("batch_size", "1") or 1)
         self.word_timestamps = params.get("word_timestamps", "false").lower() == "true"
-        self.clean_disfluencies = params.get("clean_disfluencies", "false").lower() == "true"
+        self.clean_disfluencies = params.get("clean_disfluencies", "true").lower() == "true"
         
         # Configurable parameters (could be in config.params)
         # Use larger window on GPU; VAD-based splitting prevents mid-word truncation

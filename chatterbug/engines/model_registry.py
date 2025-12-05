@@ -25,7 +25,7 @@ PARAKEET_MODELS: Dict[str, str] = {
 }
 
 _DEFAULTS = {
-    "whisper_turbo": "openai/whisper-large-v3-turbo",
+    "whisper_turbo": "distil-whisper/distil-large-v3",
     "voxtral": "mistralai/Voxtral-Mini-3B-2507",
     "parakeet_rnnt": "nvidia/parakeet-rnnt-1.1b",
 }

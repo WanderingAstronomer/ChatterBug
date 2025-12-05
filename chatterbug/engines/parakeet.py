@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import os
-import tempfile
-import wave
 from pathlib import Path
 from typing import List
 
@@ -120,21 +118,30 @@ class ParakeetEngine(TranscriptionEngine):
         if self._model is None:
             raise EngineError("Parakeet model not loaded")
 
-        # Write buffered PCM16 to a temporary WAV file for RNNT inference
+        # Convert buffered PCM16 directly to torch tensor for inference
+        try:
+            import numpy as np
+            import torch
+        except ImportError as exc:  # pragma: no cover
+            raise DependencyError("numpy and torch required for tensor conversion") from exc
+
         audio_bytes = bytes(self._buffer)
         num_samples = len(audio_bytes) // 2
         duration_s = num_samples / float(self._sample_rate)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as tmp:
-            tmp_path = tmp.name
-            with wave.open(tmp, "wb") as wf:
-                wf.setnchannels(1)
-                wf.setsampwidth(2)  # 16-bit PCM
-                wf.setframerate(self._sample_rate)
-                wf.writeframes(audio_bytes)
+        # Convert PCM16 bytes directly to float32 tensor
+        audio_np = np.frombuffer(audio_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+        audio_tensor = torch.tensor(audio_np).unsqueeze(0).to(self.device)
+        audio_lengths = torch.tensor([len(audio_np)], dtype=torch.long).to(self.device)
 
         try:
-            texts = self._model.transcribe([tmp_path], batch_size=1, num_workers=0)
+            # Use NeMo's transcribe method with tensors directly
+            # NeMo models accept processed_signal and processed_signal_length
+            texts = self._model.transcribe(
+                audio=audio_tensor,
+                audio_len=audio_lengths,
+                batch_size=1,
+            )
             text = ""
             if texts:
                 first = texts[0]
@@ -149,11 +156,8 @@ class ParakeetEngine(TranscriptionEngine):
                         text = str(inner)
                 elif hasattr(first, "text"):
                     text = first.text
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except OSError:
-                pass
+        except Exception as exc:
+            raise EngineError(f"Parakeet inference failed: {exc}") from exc
 
         if text.strip():
             final_text = self._apply_punctuation(text.strip())

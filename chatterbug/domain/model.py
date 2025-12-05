@@ -37,7 +37,7 @@ class TranscriptSegment(BaseModel):
 
 class EngineConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
-    model_name: str = "openai/whisper-large-v3-turbo"
+    model_name: str = "distil-whisper/distil-large-v3"
     compute_type: str = "int8"
     device: str = "cpu"
     model_cache_dir: str | None = str(DEFAULT_MODEL_CACHE_DIR)
