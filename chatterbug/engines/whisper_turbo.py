@@ -49,6 +49,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         self._buffer = bytearray()
         self._options: TranscriptionOptions | None = None
         self._segments: List[TranscriptSegment] = []
+        self._stream_offset_s = 0.0  # Track cumulative time offset for accurate timestamps
 
         # Engine params
         params = {k.lower(): v for k, v in (config.params or {}).items()}
@@ -76,6 +77,10 @@ class WhisperTurboEngine(TranscriptionEngine):
         neg_default = max(0.0, self.vad_threshold - 0.15)
         self.vad_neg_threshold = float(params.get("vad_neg_threshold", neg_default))
         self.sample_rate = 16000
+        self.bytes_per_sample = 2  # PCM16 = 2 bytes per sample
+        # Prevent OOM: max buffer size (60 seconds ≈ 1.83MB for 16kHz mono PCM16)
+        self.max_buffer_sec = float(params.get("max_buffer_sec", 60.0))
+        self.max_buffer_bytes = int(self.max_buffer_sec * self.sample_rate * self.bytes_per_sample)
 
     def _lazy_model(self):
         if self._model is not None:
@@ -174,6 +179,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         self._options = options
         self._buffer.clear()
         self._segments.clear()
+        self._stream_offset_s = 0.0  # Reset stream offset for new session
         self._lazy_model()
 
     # Backward-compatibility for pull-based API used in legacy tests
@@ -188,6 +194,18 @@ class WhisperTurboEngine(TranscriptionEngine):
 
     def push_audio(self, pcm16: bytes, timestamp_ms: int) -> None:
         self._buffer.extend(pcm16)
+        # Prevent buffer overflow: drop oldest audio if exceeds limit
+        if len(self._buffer) > self.max_buffer_bytes:
+            excess = len(self._buffer) - self.max_buffer_bytes
+            bytes_per_sec = self.sample_rate * self.bytes_per_sample
+            logger.warning(
+                f"Buffer overflow: dropping {excess} bytes ({excess / bytes_per_sec:.1f}s) "
+                f"of oldest audio to prevent OOM"
+            )
+            self._buffer = self._buffer[excess:]
+            # Update stream offset to account for dropped audio
+            # This happens before _maybe_process, so consumed audio offset is separate
+            self._stream_offset_s += excess / bytes_per_sec
         self._maybe_process(force=False)
 
     def flush(self) -> None:
@@ -202,7 +220,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         if not self._options or not self._model:
             return
 
-        bytes_per_sec = self.sample_rate * 2
+        bytes_per_sec = self.sample_rate * self.bytes_per_sample
         min_bytes = int(self.min_emit_sec * bytes_per_sec)
         window_bytes = int(self.window_sec * bytes_per_sec)
 
@@ -261,30 +279,31 @@ class WhisperTurboEngine(TranscriptionEngine):
         audio_np = np.frombuffer(audio_for_model, dtype=np.int16).astype(np.float32) / 32768.0
         segments, _ = self._transcribe(audio_np)
 
-        # Convert to TranscriptSegment
-        # Note: timestamps from whisper are relative to the chunk start.
-        # We need to map them to stream time if we track it.
-        # For now, we just emit text.
-        # To do proper timestamping, we need to track the timestamp of the buffer head.
-        # The advice example simplified this.
-        
+        # Convert to TranscriptSegment with stream-relative timestamps
         for s in segments:
             text = self._clean_text(s.text) if self.clean_disfluencies else s.text
             self._segments.append(
                 TranscriptSegment(
                     text=text,
-                    start_s=s.start, # Relative to chunk
-                    end_s=s.end,
+                    start_s=self._stream_offset_s + s.start,  # Add cumulative offset
+                    end_s=self._stream_offset_s + s.end,      # Add cumulative offset
                     language=self._options.language,
                     confidence=getattr(s, "avg_logprob", 0.0)
                 )
             )
+
+        # Update stream offset based on consumed audio
+        consumed_duration_s = consume_bytes / bytes_per_sec
+        self._stream_offset_s += consumed_duration_s
 
         # Slide window
         # Drop consumed bytes; keep a small tail for context when streaming
         self._buffer = self._buffer[consume_bytes:]
         hop_bytes = int(self.hop_sec * bytes_per_sec)
         if len(self._buffer) > hop_bytes:
+            # Additional audio is dropped for sliding window; account for it in offset
+            dropped_bytes = len(self._buffer) - hop_bytes
+            self._stream_offset_s += dropped_bytes / bytes_per_sec
             self._buffer = self._buffer[-hop_bytes:]
         elif force:
             self._buffer.clear()
