@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Protocol
 
 try:
     from silero_vad import load_silero_vad
@@ -6,6 +7,40 @@ try:
 except ImportError:  # Optional dependency; we degrade gracefully without it.
     load_silero_vad = None
     HAS_SILERO = False
+
+
+class VadService(Protocol):
+    """Protocol for VAD (Voice Activity Detection) services."""
+    
+    def speech_spans(
+        self,
+        audio: bytes,
+        *,
+        threshold: float = 0.5,
+        neg_threshold: float | None = None,
+        min_silence_ms: int | None = None,
+        min_speech_ms: int | None = None,
+        speech_pad_ms: int | None = None,
+    ) -> list[tuple[int, int]]:
+        """Return speech spans as (start_sample, end_sample)."""
+        ...
+
+
+class NullVad:
+    """No-op VAD that assumes all audio is speech."""
+    
+    def speech_spans(
+        self,
+        audio: bytes,
+        *,
+        threshold: float = 0.5,
+        neg_threshold: float | None = None,
+        min_silence_ms: int | None = None,
+        min_speech_ms: int | None = None,
+        speech_pad_ms: int | None = None,
+    ) -> list[tuple[int, int]]:
+        """Return empty spans (no VAD filtering)."""
+        return []
 
 class VadWrapper:
     def __init__(self, sample_rate: int = 16000):

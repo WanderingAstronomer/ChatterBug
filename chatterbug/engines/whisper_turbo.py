@@ -19,7 +19,7 @@ from chatterbug.domain.model import (
 from chatterbug.domain.exceptions import DependencyError, EngineError
 from chatterbug.engines.model_registry import normalize_model_name
 from chatterbug.engines.hardware import get_optimal_device, get_optimal_compute_type
-from chatterbug.engines.vad import VadWrapper
+from chatterbug.audio.vad import VadWrapper, VadService
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ class WhisperTurboEngine(TranscriptionEngine):
     Stateful, push-based faster-whisper adapter with VAD and buffering.
     """
 
-    def __init__(self, config: EngineConfig) -> None:
+    def __init__(self, config: EngineConfig, vad: VadService | None = None) -> None:
         self.config = config
         self.model_name = normalize_model_name("whisper_turbo", config.model_name)
         
@@ -46,7 +46,8 @@ class WhisperTurboEngine(TranscriptionEngine):
         
         self._model = None
         self._pipeline = None
-        self._vad = VadWrapper()
+        # Use injected VAD or create default VadWrapper
+        self._vad: VadService = vad if vad is not None else VadWrapper()
         
         # Buffering state
         self._buffer = bytearray()
