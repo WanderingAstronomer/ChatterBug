@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from threading import Lock
 from typing import Iterable
@@ -50,9 +51,17 @@ class HistoryStorage(StorageRepository):
                 self.history_file.unlink()
 
     def _trim_history_locked(self) -> None:
+        """Trim history file atomically using temp file + rename."""
         if not self.history_file.exists():
             return
         lines = self.history_file.read_text(encoding="utf-8").splitlines()
         if len(lines) > self.limit:
             trimmed = lines[-self.limit :]
-            self.history_file.write_text("\n".join(trimmed) + "\n", encoding="utf-8")
+            # Write to temporary file first
+            temp_file = self.history_file.with_suffix(".tmp")
+            temp_file.write_text("\n".join(trimmed) + "\n", encoding="utf-8")
+            # Atomic rename on POSIX systems (overwrites destination)
+            # On Windows, need to remove destination first
+            if os.name == 'nt':
+                self.history_file.unlink()
+            temp_file.replace(self.history_file)

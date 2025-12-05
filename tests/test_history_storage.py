@@ -1,4 +1,5 @@
 """Test HistoryStorage implementation."""
+import json
 from pathlib import Path
 
 import pytest
@@ -136,3 +137,102 @@ def test_history_storage_handles_corrupted_lines(history_dir: Path) -> None:
     # May be 0 or 2 depending on whether TranscriptionResult validation passes
     # The key is it doesn't crash
     assert isinstance(history, list)
+
+
+def test_history_storage_trim_is_atomic(history_dir: Path, sample_result: TranscriptionResult) -> None:
+    """Test that trimming history is atomic (no partial writes)."""
+    import threading
+    
+    storage = HistoryStorage(history_dir, limit=5)
+    
+    # Add more than limit to trigger trim
+    for i in range(10):
+        modified_result = TranscriptionResult(
+            text=f"Transcript {i}",
+            segments=sample_result.segments,
+            model_name=sample_result.model_name,
+            device=sample_result.device,
+            precision=sample_result.precision,
+            engine=sample_result.engine,
+            duration_s=sample_result.duration_s,
+        )
+        storage.save_transcription(modified_result, target=None)
+    
+    # Verify the file is valid after trim
+    history_file = history_dir / "history.jsonl"
+    assert history_file.exists()
+    lines = history_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 5
+    
+    # All lines should be valid JSON
+    for line in lines:
+        assert json.loads(line)  # Should not raise
+
+
+def test_history_storage_concurrent_writes(history_dir: Path, sample_result: TranscriptionResult) -> None:
+    """Test that concurrent writes don't corrupt the history file."""
+    import threading
+    
+    storage = HistoryStorage(history_dir, limit=50)
+    errors = []
+    
+    def write_transcript(index: int):
+        try:
+            modified_result = TranscriptionResult(
+                text=f"Transcript {index}",
+                segments=sample_result.segments,
+                model_name=sample_result.model_name,
+                device=sample_result.device,
+                precision=sample_result.precision,
+                engine=sample_result.engine,
+                duration_s=sample_result.duration_s,
+            )
+            storage.save_transcription(modified_result, target=None)
+        except Exception as e:
+            errors.append(e)
+    
+    # Launch 10 concurrent writers
+    threads = []
+    for i in range(10):
+        t = threading.Thread(target=write_transcript, args=(i,))
+        threads.append(t)
+        t.start()
+    
+    # Wait for all threads to complete
+    for t in threads:
+        t.join()
+    
+    # No errors should have occurred
+    assert len(errors) == 0
+    
+    # Verify the file is valid
+    history_file = history_dir / "history.jsonl"
+    assert history_file.exists()
+    lines = history_file.read_text(encoding="utf-8").splitlines()
+    assert len(lines) == 10
+    
+    # All lines should be valid JSON
+    for line in lines:
+        assert json.loads(line)  # Should not raise
+
+
+def test_history_storage_no_tmp_file_left_behind(history_dir: Path, sample_result: TranscriptionResult) -> None:
+    """Test that no temporary files are left behind after trim."""
+    storage = HistoryStorage(history_dir, limit=3)
+    
+    # Add more than limit to trigger trim
+    for i in range(10):
+        modified_result = TranscriptionResult(
+            text=f"Transcript {i}",
+            segments=sample_result.segments,
+            model_name=sample_result.model_name,
+            device=sample_result.device,
+            precision=sample_result.precision,
+            engine=sample_result.engine,
+            duration_s=sample_result.duration_s,
+        )
+        storage.save_transcription(modified_result, target=None)
+    
+    # No .tmp files should exist
+    tmp_files = list(history_dir.glob("*.tmp"))
+    assert len(tmp_files) == 0
