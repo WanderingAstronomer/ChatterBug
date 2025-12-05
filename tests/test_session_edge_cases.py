@@ -41,6 +41,11 @@ class ErrorEngine(TranscriptionEngine):
     def poll_segments(self) -> list[TranscriptSegment]:
         return []
 
+    @property
+    def metadata(self):
+        from chatterbug.domain.model import EngineMetadata
+        return EngineMetadata(model_name="test-model", device="cpu", precision="int8")
+
 
 class SlowSource:
     """Source that yields chunks with delays."""
@@ -106,6 +111,11 @@ class FakeEngine(TranscriptionEngine):
         segs = list(self._segments)
         self._segments.clear()
         return segs
+
+    @property
+    def metadata(self):
+        from chatterbug.domain.model import EngineMetadata
+        return EngineMetadata(model_name="test-model", device="cpu", precision="int8")
 
 
 def test_session_cannot_start_twice() -> None:
@@ -225,7 +235,11 @@ def test_session_sink_receives_complete_on_success() -> None:
 
 
 def test_session_error_propagates_to_join() -> None:
-    """Test that errors during transcription propagate to join()."""
+    """Test that errors during transcription propagate to join().
+    
+    Note: TranscriptionSession preserves the original exception type and does not
+    wrap it in EngineError. This allows callers to handle specific error types.
+    """
 
     class ErrorDuringIterationEngine(TranscriptionEngine):
         """Engine that raises error during push."""
@@ -244,6 +258,11 @@ def test_session_error_propagates_to_join() -> None:
         def poll_segments(self) -> list[TranscriptSegment]:
             return []
 
+        @property
+        def metadata(self):
+            from chatterbug.domain.model import EngineMetadata
+            return EngineMetadata(model_name="test-model", device="cpu", precision="int8")
+
     session = TranscriptionSession()
     source = FakeSource()
     engine = ErrorDuringIterationEngine()
@@ -251,7 +270,7 @@ def test_session_error_propagates_to_join() -> None:
 
     session.start(source, engine, sink, TranscriptionOptions())
 
-    with pytest.raises(EngineError, match="Test error during iteration"):
+    with pytest.raises(RuntimeError, match="Test error during iteration"):
         session.join()
 
     # Note: Due to the exception handling in TranscriptionSession,
@@ -276,6 +295,11 @@ def test_session_handles_empty_transcription() -> None:
             segs = list(self._segments)
             self._segments.clear()
             return segs
+
+        @property
+        def metadata(self):
+            from chatterbug.domain.model import EngineMetadata
+            return EngineMetadata(model_name="test-model", device="cpu", precision="int8")
 
     session = TranscriptionSession()
     source = FakeSource()

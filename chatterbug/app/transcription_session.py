@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import queue
+from dataclasses import dataclass
 from threading import Event, Lock, Thread
 from typing import Optional
 
@@ -18,24 +19,33 @@ from chatterbug.domain.model import (
     TranscriptSink,
 )
 from chatterbug.domain.exceptions import SessionError
-from chatterbug.polish.base import Polisher
 
 logger = structlog.get_logger()
 
-# Timeout for graceful thread shutdown
-THREAD_JOIN_TIMEOUT_SEC = 10.0
+
+@dataclass(frozen=True)
+class SessionConfig:
+    """Configuration for TranscriptionSession behavior.
+    
+    These parameters control queue sizes and thread coordination behavior,
+    allowing tuning for different performance/memory tradeoffs.
+    """
+    audio_queue_size: int = 200
+    segment_queue_size: int = 32
+    thread_join_timeout_sec: float = 10.0
+
 
 class TranscriptionSession:
     """Wires an AudioSource into a TranscriptionEngine and pushes results to a sink."""
 
-    def __init__(self) -> None:
+    def __init__(self, config: SessionConfig | None = None) -> None:
+        self._config = config or SessionConfig()
         self._thread: Optional[Thread] = None
         self._threads: list[Thread] = []
         self._stop_event = Event()
         self._exception: Optional[BaseException] = None
         self._audio_queue: queue.Queue[AudioChunk | object] | None = None
         self._segment_queue: queue.Queue[TranscriptSegment | object] | None = None
-        self._polisher: Optional[Polisher] = None
         self._start_stop_lock = Lock()  # Protect against concurrent start/stop
         # Sentinels to signal stage completion
         self._audio_stop = object()
@@ -48,16 +58,14 @@ class TranscriptionSession:
         sink: TranscriptSink,
         options: TranscriptionOptions,
         engine_kind: EngineKind = "whisper_turbo",
-        polisher: Optional[Polisher] = None,
     ) -> None:
         with self._start_stop_lock:
             if any(t.is_alive() for t in self._threads):
                 raise SessionError("TranscriptionSession already running")
             self._stop_event.clear()
             self._exception = None
-            self._polisher = polisher
-            self._audio_queue = queue.Queue(maxsize=200) # Increased buffer
-            self._segment_queue = queue.Queue(maxsize=32)
+            self._audio_queue = queue.Queue(maxsize=self._config.audio_queue_size)
+            self._segment_queue = queue.Queue(maxsize=self._config.segment_queue_size)
             self._threads = [
                 Thread(
                     target=self._run_source,
@@ -99,7 +107,7 @@ class TranscriptionSession:
         # Use timeout to prevent hanging indefinitely
         for thread in self._threads:
             if thread.is_alive():
-                thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
+                thread.join(timeout=self._config.thread_join_timeout_sec)
                 if thread.is_alive():
                     logger.warning(f"Thread {thread.name} did not terminate within timeout")
 
@@ -232,17 +240,14 @@ class TranscriptionSession:
                 # Normalize whitespace to avoid double spaces from engine outputs
                 raw_text = " ".join(seg.text.strip() for seg in segments)
                 normalized_text = " ".join(raw_text.split())
-                polished_text = (
-                    self._polisher.polish(normalized_text)
-                    if self._polisher is not None
-                    else normalized_text
-                )
+                # Use engine's metadata property instead of getattr
+                metadata = engine.metadata
                 result = TranscriptionResult(
-                    text=polished_text,
+                    text=normalized_text,
                     segments=tuple(segments),
-                    model_name=getattr(engine, "model_name", "unknown"),
-                    device=getattr(engine, "device", "unknown"),
-                    precision=getattr(engine, "precision", "unknown"),
+                    model_name=metadata.model_name,
+                    device=metadata.device,
+                    precision=metadata.precision,
                     engine=engine_kind,
                     duration_s=segments[-1].end_s if segments else 0.0,
                     warnings=warnings,

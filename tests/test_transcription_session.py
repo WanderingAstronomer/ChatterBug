@@ -3,8 +3,10 @@ from __future__ import annotations
 from typing import Iterable
 
 from chatterbug.app import TranscriptionSession
+from chatterbug.app.sinks import PolishingSink
 from chatterbug.domain.model import (
     AudioChunk,
+    EngineMetadata,
     TranscriptSegment,
     TranscriptionEngine,
     TranscriptionOptions,
@@ -36,6 +38,10 @@ class FakeEngine(TranscriptionEngine):
         segs = list(self._segments)
         self._segments.clear()
         return segs
+
+    @property
+    def metadata(self) -> EngineMetadata:
+        return EngineMetadata(model_name="test-model", device="cpu", precision="int8")
 
 
 class CollectSink:
@@ -73,10 +79,13 @@ class FakePolisher:
 
 
 def test_transcription_session_applies_polisher() -> None:
+    """Test that polishing works via PolishingSink decorator."""
     source = FakeSource()
     engine = FakeEngine()
-    sink = CollectSink()
+    base_sink = CollectSink()
     polisher = FakePolisher()
+    # Wrap the sink with polishing decorator
+    sink = PolishingSink(base_sink, polisher)
     session = TranscriptionSession()
     session.start(
         source,
@@ -84,8 +93,7 @@ def test_transcription_session_applies_polisher() -> None:
         sink,
         TranscriptionOptions(),
         engine_kind="whisper_turbo",
-        polisher=polisher,
     )
     session.join()
     assert polisher.calls == ["ok"]
-    assert sink.result_text == "polished: ok"
+    assert base_sink.result_text == "polished: ok"

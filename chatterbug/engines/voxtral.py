@@ -7,6 +7,7 @@ from chatterbug.domain.model import (
     AudioChunk,
     DEFAULT_MODEL_CACHE_DIR,
     EngineConfig,
+    EngineMetadata,
     TranscriptSegment,
     TranscriptionEngine,
     TranscriptionOptions,
@@ -111,3 +112,12 @@ class VoxtralEngine(TranscriptionEngine):
         segs = list(self._segments)
         self._segments.clear()
         return segs
+
+    @property
+    def metadata(self) -> EngineMetadata:
+        """Return engine metadata for result building."""
+        return EngineMetadata(
+            model_name=self.model_name,
+            device=self.device,
+            precision=self.precision,
+        )
