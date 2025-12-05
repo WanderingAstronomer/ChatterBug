@@ -14,6 +14,11 @@
 | Voxtral | 7.23s | 8.87s | +1.64s |
 | Parakeet RNNT | 13.58s | 15.39s | +1.81s |
 
+Runtime-to-duration ratios (GPU run time ÷ 34.37s audio):
+- Whisper Turbo: 0.10× (no polish), 0.15× (polish)
+- Voxtral: 0.21× (no polish), 0.26× (polish)
+- Parakeet RNNT: 0.40× (no polish), 0.45× (polish)
+
 ### CPU-only rerun (CUDA disabled, single run)
 - Env: `CUDA_VISIBLE_DEVICES=""`, `NUMEXPR_MAX_THREADS=8`, CLI `--device cpu`, `--compute-type int8` for Whisper/Voxtral, `--compute-type float32` for Parakeet, `--polish-gpu-layers 0` when polishing.
 - Input: `samples/Recording 2.flac` (ffmpeg measured ~34.37s). Output suppressed for timing.
