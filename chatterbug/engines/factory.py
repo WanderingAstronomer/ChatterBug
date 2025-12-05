@@ -35,7 +35,7 @@ def build_engine(kind: EngineKind, config: EngineConfig) -> TranscriptionEngine:
     
     engine_class = ENGINE_REGISTRY.get(kind)
     if engine_class is None:
-        raise ConfigurationError(f"Unknown engine kind: {kind}")
+        raise ValueError(f"Unknown engine kind: {kind}")
     
     return engine_class(config)
 

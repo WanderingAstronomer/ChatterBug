@@ -67,7 +67,7 @@ class EngineConfig(BaseModel):
     def validate_device(cls, v: str) -> str:
         valid_devices = {d.value for d in Device}
         if v not in valid_devices:
-            raise ValueError(f"Invalid device: {v}; must be one of {', '.join(valid_devices)}")
+            raise ValueError(f"Invalid device: {v}; must be cpu, cuda, or auto")
         return v
 
     @field_validator("compute_type")

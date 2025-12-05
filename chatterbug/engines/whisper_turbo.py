@@ -334,7 +334,7 @@ class WhisperTurboEngine(TranscriptionEngine):
                 # WhisperModel.transcribe does not accept batch_size
                 result = self._model.transcribe(audio_np, **kwargs)
         except Exception as exc:  # pragma: no cover - exercised via tests
-            raise EngineError(str(exc)) from exc
+            raise RuntimeError(str(exc)) from exc
 
         if isinstance(result, tuple) and len(result) == 2:
             return result

@@ -67,6 +67,16 @@ class FakeTranscriptionEngine(TranscriptionEngine):
         segments = list(self._segments)
         self._segments.clear()
         return segments
+    
+    @property
+    def metadata(self):
+        """Return fake metadata for testing."""
+        from chatterbug.domain.model import EngineMetadata
+        return EngineMetadata(
+            model_name="fake-model",
+            device="cpu",
+            precision="int8",
+        )
 
 
 class CollectorSink(TranscriptSink):
@@ -198,6 +208,16 @@ def test_integration_buffer_overflow_handling() -> None:
             segments = list(self._segments)
             self._segments.clear()
             return segments
+        
+        @property
+        def metadata(self):
+            """Return fake metadata for testing."""
+            from chatterbug.domain.model import EngineMetadata
+            return EngineMetadata(
+                model_name="slow-engine",
+                device="cpu",
+                precision="int8",
+            )
     
     session = TranscriptionSession()
     source = FastProducerSource()

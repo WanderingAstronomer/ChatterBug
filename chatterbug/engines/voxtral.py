@@ -37,7 +37,7 @@ class VoxtralEngine(TranscriptionEngine):
             from transformers import VoxtralForConditionalGeneration, AutoProcessor
             import torch
         except ImportError as exc:  # pragma: no cover - optional dependency guard
-            raise DependencyError(
+            raise RuntimeError(
                 "transformers and torch are required for VoxtralEngine; install with voxtral extra"
             ) from exc
 

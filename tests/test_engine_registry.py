@@ -24,8 +24,12 @@ def test_engine_registry_stores_classes():
     for engine_kind, engine_class in ENGINE_REGISTRY.items():
         # Should be a class
         assert isinstance(engine_class, type)
-        # Should be a subclass of TranscriptionEngine
-        assert issubclass(engine_class, TranscriptionEngine)
+        # Note: Cannot use issubclass with Protocols that have non-method members (e.g., metadata property)
+        # Instead, verify the class has the required protocol methods
+        assert hasattr(engine_class, 'start')
+        assert hasattr(engine_class, 'push_audio')
+        assert hasattr(engine_class, 'flush')
+        assert hasattr(engine_class, 'poll_segments')
 
 
 def test_build_engine_creates_instances():
@@ -38,10 +42,10 @@ def test_build_engine_creates_instances():
 
 
 def test_build_engine_with_unknown_kind_raises():
-    """Test that building unknown engine kind raises ConfigurationError."""
+    """Test that building unknown engine kind raises ValueError."""
     config = EngineConfig()
     
-    with pytest.raises(ConfigurationError, match="Unknown engine kind"):
+    with pytest.raises(ValueError, match="Unknown engine kind"):
         build_engine("nonexistent_engine", config)  # type: ignore[arg-type]
 
 
