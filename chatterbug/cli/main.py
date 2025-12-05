@@ -9,6 +9,9 @@ from chatterbug.audio.sources import FileSource, MicrophoneSource
 from chatterbug.cli.sinks import ClipboardSink, FileSink, HistorySink, StdoutSink, CompositeSink
 from chatterbug.config import load_config
 from chatterbug.domain import EngineConfig, TranscriptionOptions
+from chatterbug.domain.exceptions import (
+    DependencyError, EngineError, AudioDecodeError, ConfigurationError
+)
 from chatterbug.engines.factory import build_engine
 from chatterbug.engines.model_registry import normalize_model_name
 from chatterbug.polish.base import PolisherConfig
@@ -19,7 +22,7 @@ from chatterbug.storage.history import HistoryStorage
 try:
     import typer
 except ImportError as exc:  # pragma: no cover - tooling dependency guard
-    raise RuntimeError("typer is required for the CLI") from exc
+    raise DependencyError("typer is required for the CLI") from exc
 
 
 configure_logging()
@@ -136,10 +139,10 @@ def transcribe(
     try:
         engine_adapter = build_engine(engine, engine_config)
         polisher = build_polisher(polisher_config)
-    except RuntimeError as exc:
+    except (DependencyError, EngineError) as exc:
         typer.echo(f"Engine initialization error: {exc}", err=True)
         raise typer.Exit(code=3) from exc
-    except ValueError as exc:
+    except ConfigurationError as exc:
         typer.echo(f"Polisher error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     
@@ -168,10 +171,10 @@ def transcribe(
     except FileNotFoundError as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
-    except RuntimeError as exc:
+    except EngineError as exc:
         typer.echo(f"Inference error: {exc}", err=True)
         raise typer.Exit(code=4) from exc
-    except ValueError as exc:
+    except (AudioDecodeError, ConfigurationError) as exc:
         typer.echo(f"Decode/config error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     except Exception as exc:  # pragma: no cover - safety net

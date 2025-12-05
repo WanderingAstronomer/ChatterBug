@@ -5,6 +5,7 @@ from pathlib import Path
 import typer
 
 from chatterbug.domain import TranscriptSegment, TranscriptSink, TranscriptionResult
+from chatterbug.domain.exceptions import DependencyError
 from chatterbug.storage.history import HistoryStorage
 
 
@@ -45,7 +46,7 @@ class ClipboardSink(TranscriptSink):
         try:
             import pyperclip  # type: ignore
         except ImportError as exc:  # pragma: no cover - optional dependency guard
-            raise RuntimeError("pyperclip is required for clipboard sink") from exc
+            raise DependencyError("pyperclip is required for clipboard sink") from exc
         self._pc = pyperclip
         self._segments: list[TranscriptSegment] = []
 

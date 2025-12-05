@@ -3,6 +3,8 @@ from __future__ import annotations
 from threading import Event
 from typing import Iterable, Protocol
 
+from chatterbug.domain.exceptions import DependencyError
+
 
 class MicrophoneRecorder(Protocol):
     """Abstract microphone recorder that yields raw PCM chunks."""
@@ -26,7 +28,7 @@ class SoundDeviceRecorder:
         try:
             import sounddevice as sd  # type: ignore
         except ImportError as exc:  # pragma: no cover - optional dependency guard
-            raise RuntimeError("sounddevice is required for SoundDeviceRecorder") from exc
+            raise DependencyError("sounddevice is required for SoundDeviceRecorder") from exc
         self._sd = sd
         self.device_name = device_name
         self.dtype = dtype

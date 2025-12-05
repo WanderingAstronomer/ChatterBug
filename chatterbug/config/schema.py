@@ -6,6 +6,7 @@ from typing import Mapping
 from pydantic import BaseModel, Field, field_validator
 
 from chatterbug.domain.model import DEFAULT_MODEL_CACHE_DIR, EngineKind
+from chatterbug.domain.exceptions import ConfigurationError
 
 
 class AppConfig(BaseModel):
@@ -42,21 +43,21 @@ class AppConfig(BaseModel):
     def validate_compute_type(cls, v: str) -> str:
         allowed = {"int8", "int8_float16", "float16", "float32", "fp16", "fp32"}
         if v not in allowed:
-            raise ValueError("Invalid compute_type")
+            raise ConfigurationError("Invalid compute_type")
         return v
 
     @field_validator("chunk_ms")
     @classmethod
     def validate_chunk_ms(cls, v: int) -> int:
         if v <= 0:
-            raise ValueError("chunk_ms must be positive")
+            raise ConfigurationError("chunk_ms must be positive")
         return v
 
     @field_validator("history_limit")
     @classmethod
     def validate_history_limit(cls, v: int) -> int:
         if v <= 0:
-            raise ValueError("history_limit must be positive")
+            raise ConfigurationError("history_limit must be positive")
         return v
 
     @classmethod

@@ -13,6 +13,7 @@ from chatterbug.domain.model import (
     TranscriptionEngine,
     TranscriptionOptions,
 )
+from chatterbug.domain.exceptions import DependencyError, EngineError
 from chatterbug.engines.model_registry import normalize_model_name
 
 
@@ -46,7 +47,7 @@ class ParakeetEngine(TranscriptionEngine):
             # Suppress verbose NeMo logging
             logging.getLogger("nemo_logger").setLevel(logging.ERROR)
         except ImportError as exc:  # pragma: no cover - optional dependency guard
-            raise RuntimeError(
+            raise DependencyError(
                 "nemo_toolkit is required for ParakeetEngine; install with parakeet extra"
             ) from exc
 
@@ -117,7 +118,7 @@ class ParakeetEngine(TranscriptionEngine):
             return
 
         if self._model is None:
-            raise RuntimeError("Parakeet model not loaded")
+            raise EngineError("Parakeet model not loaded")
 
         # Write buffered PCM16 to a temporary WAV file for RNNT inference
         audio_bytes = bytes(self._buffer)

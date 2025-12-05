@@ -10,6 +10,7 @@ from chatterbug.domain.model import (
     TranscriptionOptions,
     TranscriptionResult,
 )
+from chatterbug.domain.exceptions import SessionError, EngineError, ConfigurationError
 
 
 class ErrorSource:
@@ -116,7 +117,7 @@ def test_session_cannot_start_twice() -> None:
 
     session.start(source, engine, sink, TranscriptionOptions())
 
-    with pytest.raises(RuntimeError, match="already running"):
+    with pytest.raises(SessionError, match="already running"):
         session.start(source, engine, sink, TranscriptionOptions())
 
     session.stop()
@@ -126,13 +127,13 @@ def test_session_cannot_start_twice() -> None:
 def test_session_join_propagates_source_error() -> None:
     """Test session.join() raises exception from source."""
     session = TranscriptionSession()
-    source = ErrorSource(ValueError("Source error"))
+    source = ErrorSource(ConfigurationError("Source error"))
     engine = FakeEngine()
     sink = CountingSink()
 
     session.start(source, engine, sink, TranscriptionOptions())
 
-    with pytest.raises(ValueError, match="Source error"):
+    with pytest.raises(ConfigurationError, match="Source error"):
         session.join()
 
 
@@ -140,12 +141,12 @@ def test_session_join_propagates_engine_error() -> None:
     """Test session.join() raises exception from engine."""
     session = TranscriptionSession()
     source = FakeSource()
-    engine = ErrorEngine(RuntimeError("Engine error"))
+    engine = ErrorEngine(EngineError("Engine error"))
     sink = CountingSink()
 
     session.start(source, engine, sink, TranscriptionOptions())
 
-    with pytest.raises(RuntimeError, match="Engine error"):
+    with pytest.raises(EngineError, match="Engine error"):
         session.join()
 
 
@@ -250,7 +251,7 @@ def test_session_error_propagates_to_join() -> None:
 
     session.start(source, engine, sink, TranscriptionOptions())
 
-    with pytest.raises(RuntimeError, match="Test error during iteration"):
+    with pytest.raises(EngineError, match="Test error during iteration"):
         session.join()
 
     # Note: Due to the exception handling in TranscriptionSession,

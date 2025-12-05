@@ -15,11 +15,13 @@ from chatterbug.domain.model import (
     TranscriptionEngine,
     TranscriptionOptions,
 )
+from chatterbug.domain.exceptions import DependencyError, EngineError
 from chatterbug.engines.model_registry import normalize_model_name
 from chatterbug.engines.hardware import get_optimal_device, get_optimal_compute_type
 from chatterbug.engines.vad import VadWrapper
 
 logger = logging.getLogger(__name__)
+
 
 class WhisperTurboEngine(TranscriptionEngine):
     """
@@ -88,7 +90,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         try:
             from faster_whisper import WhisperModel
         except ImportError as exc:
-            raise RuntimeError(
+            raise DependencyError(
                 "faster-whisper is required; pip install .[engine]"
             ) from exc
 
@@ -330,7 +332,7 @@ class WhisperTurboEngine(TranscriptionEngine):
                 # WhisperModel.transcribe does not accept batch_size
                 result = self._model.transcribe(audio_np, **kwargs)
         except Exception as exc:  # pragma: no cover - exercised via tests
-            raise RuntimeError(str(exc)) from exc
+            raise EngineError(str(exc)) from exc
 
         if isinstance(result, tuple) and len(result) == 2:
             return result

@@ -5,6 +5,7 @@ from typing import Iterable
 from threading import Event
 
 from chatterbug.domain.model import AudioChunk, AudioSource
+from chatterbug.domain.exceptions import ConfigurationError
 from .decoder import AudioDecoder, FfmpegDecoder, WavDecoder
 from .recorder import MicrophoneRecorder, SoundDeviceRecorder
 from .validation import validate_pcm_chunk
@@ -32,7 +33,7 @@ class FileSource(AudioSource):
         if not self.path.exists():
             raise FileNotFoundError(f"Audio file not found: {self.path}")
         if not self.path.is_file():
-            raise ValueError(f"Path is not a file: {self.path}")
+            raise ConfigurationError(f"Path is not a file: {self.path}")
 
         try:
             audio = self.decoder.decode(str(self.path))

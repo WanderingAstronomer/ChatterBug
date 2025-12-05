@@ -1,6 +1,7 @@
 import pytest
 
 from chatterbug.audio.validation import validate_pcm_chunk
+from chatterbug.domain.exceptions import ConfigurationError
 
 
 def test_validate_pcm_chunk_accepts_expected_size() -> None:
@@ -16,5 +17,5 @@ def test_validate_pcm_chunk_accepts_expected_size() -> None:
     ],
 )
 def test_validate_pcm_chunk_rejects_bad_sizes(data: bytes, err_msg: str) -> None:
-    with pytest.raises(ValueError, match=err_msg):
+    with pytest.raises(ConfigurationError, match=err_msg):
         validate_pcm_chunk(data, sample_rate=16000, channels=1, chunk_ms=100, sample_width_bytes=2)

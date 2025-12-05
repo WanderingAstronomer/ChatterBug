@@ -12,3 +12,11 @@ from .model import (  # noqa: F401
     TranscriptionOptions,
     TranscriptSink,
 )
+from .exceptions import (  # noqa: F401
+    ChatterBugError,
+    EngineError,
+    AudioDecodeError,
+    ConfigurationError,
+    SessionError,
+    DependencyError,
+)

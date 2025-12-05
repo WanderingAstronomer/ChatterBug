@@ -17,6 +17,7 @@ from chatterbug.domain.model import (
     TranscriptionResult,
     TranscriptSink,
 )
+from chatterbug.domain.exceptions import SessionError
 from chatterbug.polish.base import Polisher
 
 logger = structlog.get_logger()
@@ -51,7 +52,7 @@ class TranscriptionSession:
     ) -> None:
         with self._start_stop_lock:
             if any(t.is_alive() for t in self._threads):
-                raise RuntimeError("TranscriptionSession already running")
+                raise SessionError("TranscriptionSession already running")
             self._stop_event.clear()
             self._exception = None
             self._polisher = polisher

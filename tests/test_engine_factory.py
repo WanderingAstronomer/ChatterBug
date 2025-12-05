@@ -2,6 +2,7 @@
 import pytest
 
 from chatterbug.domain.model import EngineConfig
+from chatterbug.domain.exceptions import ConfigurationError
 from chatterbug.engines.factory import build_engine
 from chatterbug.engines.whisper_turbo import WhisperTurboEngine
 from chatterbug.engines.voxtral import VoxtralEngine
@@ -34,7 +35,7 @@ def test_build_parakeet_engine() -> None:
 def test_build_engine_with_unknown_kind() -> None:
     """Test factory raises on unknown engine kind."""
     cfg = EngineConfig()
-    with pytest.raises(ValueError, match="Unknown engine kind"):
+    with pytest.raises(ConfigurationError, match="Unknown engine kind"):
         build_engine("unknown_engine", cfg)  # type: ignore[arg-type]
 
 

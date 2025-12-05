@@ -5,6 +5,7 @@ from pathlib import Path
 
 from chatterbug.audio.decoder import FfmpegDecoder, WavDecoder, DecodedAudio, _chunk_pcm_bytes
 from chatterbug.domain.model import AudioChunk
+from chatterbug.domain.exceptions import AudioDecodeError, ConfigurationError
 
 
 def test_ffmpeg_decoder_handles_missing_binary() -> None:
@@ -18,7 +19,7 @@ def test_ffmpeg_decoder_handles_missing_binary() -> None:
 def test_ffmpeg_decoder_handles_corrupted_audio() -> None:
     """Test FfmpegDecoder raises on corrupted/invalid audio data."""
     decoder = FfmpegDecoder()
-    with pytest.raises(RuntimeError, match="ffmpeg decode failed"):
+    with pytest.raises(AudioDecodeError, match="ffmpeg decode failed"):
         decoder.decode(b"not real audio data at all")
 
 
@@ -32,7 +33,7 @@ def test_ffmpeg_decoder_handles_file_not_found() -> None:
 def test_wav_decoder_rejects_bytes_input() -> None:
     """Test WavDecoder raises on byte buffer input (unsupported)."""
     decoder = WavDecoder()
-    with pytest.raises(ValueError, match="Byte-buffer decode not supported"):
+    with pytest.raises(AudioDecodeError, match="Byte-buffer decode not supported"):
         decoder.decode(b"fake wav data")
 
 
@@ -72,7 +73,7 @@ def test_chunk_pcm_bytes_with_zero_chunk_size() -> None:
         duration_s=0.001,
         sample_width_bytes=2,
     )
-    with pytest.raises(ValueError, match="Invalid chunk size"):
+    with pytest.raises(ConfigurationError, match="Invalid chunk size"):
         list(_chunk_pcm_bytes(audio, chunk_ms=0))
 
 
@@ -85,7 +86,7 @@ def test_chunk_pcm_bytes_with_negative_chunk_size() -> None:
         duration_s=0.001,
         sample_width_bytes=2,
     )
-    with pytest.raises(ValueError, match="Invalid chunk size"):
+    with pytest.raises(ConfigurationError, match="Invalid chunk size"):
         list(_chunk_pcm_bytes(audio, chunk_ms=-100))
 
 

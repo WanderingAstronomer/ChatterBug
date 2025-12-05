@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Iterable, Protocol
 
 from chatterbug.domain.model import AudioChunk
+from chatterbug.domain.exceptions import AudioDecodeError, ConfigurationError
 
 
 @dataclass(frozen=True)
@@ -71,7 +72,7 @@ class FfmpegDecoder:
             if proc.returncode != 0:
                 stderr.seek(0)
                 err_text = stderr.read().decode(errors="ignore")
-                raise RuntimeError(f"ffmpeg decode failed (code {proc.returncode}): {err_text}")
+                raise AudioDecodeError(f"ffmpeg decode failed (code {proc.returncode}): {err_text}")
             pcm = proc.stdout
 
         sample_rate = 16000
@@ -103,7 +104,7 @@ class WavDecoder:
         import wave
 
         if isinstance(source, bytes):
-            raise ValueError("Byte-buffer decode not supported for WAV decoder")
+            raise AudioDecodeError("Byte-buffer decode not supported for WAV decoder")
 
         with wave.open(source, "rb") as wf:
             sample_rate = wf.getframerate()
@@ -131,7 +132,7 @@ def _chunk_pcm_bytes(audio: DecodedAudio, chunk_ms: int) -> Iterable[AudioChunk]
     bytes_per_second = audio.sample_rate * audio.channels * audio.sample_width_bytes
     bytes_per_chunk = int(bytes_per_second * (chunk_ms / 1000))
     if bytes_per_chunk <= 0:
-        raise ValueError("Invalid chunk size computed for audio")
+        raise ConfigurationError("Invalid chunk size computed for audio")
 
     total = len(audio.samples)
     offset = 0

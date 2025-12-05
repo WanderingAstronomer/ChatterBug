@@ -11,6 +11,7 @@ from chatterbug.domain.model import (
     TranscriptionEngine,
     TranscriptionOptions,
 )
+from chatterbug.domain.exceptions import DependencyError
 from chatterbug.engines.model_registry import normalize_model_name
 
 
@@ -35,7 +36,7 @@ class VoxtralEngine(TranscriptionEngine):
             from transformers import VoxtralForConditionalGeneration, AutoProcessor
             import torch
         except ImportError as exc:  # pragma: no cover - optional dependency guard
-            raise RuntimeError(
+            raise DependencyError(
                 "transformers and torch are required for VoxtralEngine; install with voxtral extra"
             ) from exc
 
