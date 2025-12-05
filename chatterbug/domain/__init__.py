@@ -16,7 +16,6 @@ from .model import (  # noqa: F401
 from .constants import (  # noqa: F401
     Device,
     ComputeType,
-    EngineKind as EngineKindEnum,
 )
 from .exceptions import (  # noqa: F401
     ChatterBugError,

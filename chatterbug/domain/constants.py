@@ -25,8 +25,5 @@ class ComputeType(str, Enum):
     FP32 = "fp32"
 
 
-class EngineKind(str, Enum):
-    """Available transcription engine types."""
-    WHISPER_TURBO = "whisper_turbo"
-    VOXTRAL = "voxtral"
-    PARAKEET_RNNT = "parakeet_rnnt"
+# Note: EngineKind remains as a Literal type in model.py for backward compatibility
+# and to work well with type checkers. See domain.model.EngineKind

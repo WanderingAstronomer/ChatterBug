@@ -27,7 +27,11 @@ class VadService(Protocol):
 
 
 class NullVad:
-    """No-op VAD that assumes all audio is speech."""
+    """No-op VAD that does not perform voice activity detection.
+    
+    Returns empty spans, indicating that VAD filtering should be skipped.
+    This allows the engine to process all audio without VAD-based segmentation.
+    """
     
     def speech_spans(
         self,
@@ -39,7 +43,7 @@ class NullVad:
         min_speech_ms: int | None = None,
         speech_pad_ms: int | None = None,
     ) -> list[tuple[int, int]]:
-        """Return empty spans (no VAD filtering)."""
+        """Return empty spans to indicate no VAD filtering."""
         return []
 
 class VadWrapper:
@@ -62,7 +66,7 @@ class VadWrapper:
 
     def is_speech(self, audio: bytes) -> bool:
         if not self._enabled or not self.model or not self._torch:
-            return True # Default to "everything is speech" if VAD fails
+            return True  # Default to "everything is speech" if VAD fails
 
         # Convert bytes to float32 tensor
         # audio is 16-bit PCM

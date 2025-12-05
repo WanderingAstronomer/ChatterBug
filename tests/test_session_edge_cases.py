@@ -235,7 +235,11 @@ def test_session_sink_receives_complete_on_success() -> None:
 
 
 def test_session_error_propagates_to_join() -> None:
-    """Test that errors during transcription propagate to join()."""
+    """Test that errors during transcription propagate to join().
+    
+    Note: TranscriptionSession preserves the original exception type and does not
+    wrap it in EngineError. This allows callers to handle specific error types.
+    """
 
     class ErrorDuringIterationEngine(TranscriptionEngine):
         """Engine that raises error during push."""
