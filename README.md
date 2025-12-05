@@ -1,6 +1,6 @@
 # ChatterBug
 
-Local-first ASR with pluggable engines (Whisper Turbo default, Voxtral smart mode optional, Parakeet RNNT running locally via NeMo). See `Planning and Documentation/` for architecture and requirements.
+Local-first ASR with pluggable engines (Whisper Turbo default, Voxtral smart mode optional, Parakeet RNNT running locally via NeMo). See `Planning and Documentation` for architecture and requirements.
 
 ## Requirements for all-local runs
 - Python 3.11+
