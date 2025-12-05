@@ -6,7 +6,7 @@ import sys
 
 from chatterbug.app import TranscriptionSession, configure_logging
 from chatterbug.audio.sources import FileSource, MicrophoneSource
-from chatterbug.app.sinks import ClipboardSink, FileSink, HistorySink, StdoutSink, CompositeSink
+from chatterbug.app.sinks import ClipboardSink, FileSink, HistorySink, StdoutSink, CompositeSink, PolishingSink
 from chatterbug.config import load_config
 from chatterbug.domain import EngineConfig, TranscriptionOptions
 from chatterbug.domain.exceptions import (
@@ -176,11 +176,16 @@ def transcribe(
         sinks.append(HistorySink(storage, target=output))
     if not sinks:
         sinks.append(StdoutSink())
+    
+    # Compose sink with optional polishing decorator
     sink = CompositeSink(sinks)
+    if polisher is not None:
+        sink = PolishingSink(sink, polisher)
+    
     session = TranscriptionSession()
 
     try:
-        session.start(source, engine_adapter, sink, options, engine_kind=engine, polisher=polisher)
+        session.start(source, engine_adapter, sink, options, engine_kind=engine)
         session.join()
     except FileNotFoundError as exc:
         typer.echo(f"Error: {exc}", err=True)
@@ -244,11 +249,16 @@ def listen(
     options = TranscriptionOptions(language=language)
     engine_adapter = build_engine(engine, engine_config)
     source = MicrophoneSource()
+    
+    # Compose sink with optional polishing decorator
     sink = StdoutSink()
+    if polisher is not None:
+        sink = PolishingSink(sink, polisher)
+    
     session = TranscriptionSession()
     typer.echo("Press Ctrl+C to stop.")
     try:
-        session.start(source, engine_adapter, sink, options, engine_kind=engine, polisher=polisher)
+        session.start(source, engine_adapter, sink, options, engine_kind=engine)
         while True:
             import time
 

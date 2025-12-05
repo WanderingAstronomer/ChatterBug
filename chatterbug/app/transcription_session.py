@@ -19,7 +19,6 @@ from chatterbug.domain.model import (
     TranscriptSink,
 )
 from chatterbug.domain.exceptions import SessionError
-from chatterbug.polish.base import Polisher
 
 logger = structlog.get_logger()
 
@@ -47,7 +46,6 @@ class TranscriptionSession:
         self._exception: Optional[BaseException] = None
         self._audio_queue: queue.Queue[AudioChunk | object] | None = None
         self._segment_queue: queue.Queue[TranscriptSegment | object] | None = None
-        self._polisher: Optional[Polisher] = None
         self._start_stop_lock = Lock()  # Protect against concurrent start/stop
         # Sentinels to signal stage completion
         self._audio_stop = object()
@@ -60,14 +58,12 @@ class TranscriptionSession:
         sink: TranscriptSink,
         options: TranscriptionOptions,
         engine_kind: EngineKind = "whisper_turbo",
-        polisher: Optional[Polisher] = None,
     ) -> None:
         with self._start_stop_lock:
             if any(t.is_alive() for t in self._threads):
                 raise SessionError("TranscriptionSession already running")
             self._stop_event.clear()
             self._exception = None
-            self._polisher = polisher
             self._audio_queue = queue.Queue(maxsize=self._config.audio_queue_size)
             self._segment_queue = queue.Queue(maxsize=self._config.segment_queue_size)
             self._threads = [
@@ -244,15 +240,10 @@ class TranscriptionSession:
                 # Normalize whitespace to avoid double spaces from engine outputs
                 raw_text = " ".join(seg.text.strip() for seg in segments)
                 normalized_text = " ".join(raw_text.split())
-                polished_text = (
-                    self._polisher.polish(normalized_text)
-                    if self._polisher is not None
-                    else normalized_text
-                )
                 # Use engine's metadata property instead of getattr
                 metadata = engine.metadata
                 result = TranscriptionResult(
-                    text=polished_text,
+                    text=normalized_text,
                     segments=tuple(segments),
                     model_name=metadata.model_name,
                     device=metadata.device,

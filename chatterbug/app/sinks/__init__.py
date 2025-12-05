@@ -7,3 +7,4 @@ from .sinks import (  # noqa: F401
     HistorySink,
     StdoutSink,
 )
+from .polishing import PolishingSink  # noqa: F401
