@@ -1,6 +1,7 @@
 """Tests for model registry normalization fixes (TDD approach)."""
 import pytest
 
+from chatterbug.domain.model import DEFAULT_WHISPER_MODEL
 from chatterbug.engines.model_registry import normalize_model_name
 
 
@@ -22,6 +23,8 @@ def test_normalize_whisper_model_full_name_to_short_format() -> None:
 def test_normalize_whisper_model_aliases() -> None:
     """Test that common aliases resolve to faster-whisper compatible names."""
     # Aliases should resolve to CT2 format names
+    assert normalize_model_name("whisper_turbo", "balanced") == DEFAULT_WHISPER_MODEL
+    assert normalize_model_name("whisper_turbo", "turbo-ct2") == DEFAULT_WHISPER_MODEL
     assert normalize_model_name("whisper_turbo", "turbo") == "large-v3-turbo"
     assert normalize_model_name("whisper_turbo", "large-v3-turbo") == "large-v3-turbo"
     assert normalize_model_name("whisper_turbo", "large-v3") == "large-v3"
@@ -43,10 +46,10 @@ def test_normalize_whisper_model_case_insensitive() -> None:
 def test_normalize_whisper_model_default() -> None:
     """Test that None or empty string returns default model in CT2 format."""
     default = normalize_model_name("whisper_turbo", None)
-    assert default == "distil-large-v3"  # New default
+    assert default == DEFAULT_WHISPER_MODEL  # New default
     
     default = normalize_model_name("whisper_turbo", "")
-    assert default == "distil-large-v3"
+    assert default == DEFAULT_WHISPER_MODEL
 
 
 def test_normalize_voxtral_model_names() -> None:
@@ -60,13 +63,11 @@ def test_normalize_voxtral_model_names() -> None:
     assert default == "mistralai/Voxtral-Mini-3B-2507"
 
 
-def test_normalize_parakeet_model_names() -> None:
-    """Test Parakeet model name normalization."""
-    assert normalize_model_name("parakeet_rnnt", "parakeet") == "nvidia/parakeet-rnnt-1.1b"
-    assert normalize_model_name("parakeet_rnnt", "parakeet-rnnt") == "nvidia/parakeet-rnnt-1.1b"
-    
-    default = normalize_model_name("parakeet_rnnt", None)
-    assert default == "nvidia/parakeet-rnnt-1.1b"
+def test_normalize_whisper_vllm_model_names() -> None:
+    """Test Whisper vLLM model name normalization."""
+    assert normalize_model_name("whisper_vllm", "turbo") == "openai/whisper-large-v3-turbo"
+    assert normalize_model_name("whisper_vllm", "large-v3") == "openai/whisper-large-v3"
+    assert normalize_model_name("whisper_vllm", None) == "openai/whisper-large-v3-turbo"
 
 
 def test_normalize_unknown_model_name_passthrough() -> None:
@@ -74,9 +75,6 @@ def test_normalize_unknown_model_name_passthrough() -> None:
     # For non-whisper engines, unknown names should pass through
     result = normalize_model_name("voxtral", "custom/model-name")
     assert result == "custom/model-name"
-    
-    result = normalize_model_name("parakeet_rnnt", "custom-model")
-    assert result == "custom-model"
 
 
 def test_normalize_whisper_unknown_name_passthrough() -> None:

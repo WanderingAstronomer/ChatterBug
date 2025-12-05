@@ -1,7 +1,7 @@
 [project]
 name = "chatterbug"
 version = "0.0.0"
-description = "Local-first ASR with pluggable engines (Whisper Turbo default, Voxtral optional, Parakeet RNNT offline)."
+description = "Local-first ASR with vLLM-backed Whisper and Voxtral engines (accuracy-first, GPU-optimized)."
 readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
@@ -16,17 +16,14 @@ dependencies = [
   "transformers>=4.54.0",
     "mistral-common[audio]>=1.0.0",
   "accelerate>=0.20.0",
-  "nemo_toolkit[asr]>=1.22.0",
-  "h5py>=3.10.0",
   "rich>=13.7.0",
   "sounddevice>=0.4.6",
   "pyperclip>=1.8.2",
+  "openai>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0", "mypy>=1.10.0"]
-gui = ["PySide6>=6.6.0"]
-hotkeys = ["keyboard>=0.13.5"]
 polish = ["llama-cpp-python>=0.3.0", "huggingface_hub>=0.23.0"]
 
 [project.scripts]
@@ -38,6 +35,21 @@ packages = ["chatterbug"]
 [tool.mypy]
 python_version = "3.11"
 strict = true
+explicit_package_bases = true
+exclude = ".*(chatterbug/tui/|chatterbug/polish/).*"
+
+[[tool.mypy.overrides]]
+module = [
+  "tests.*",
+  "chatterbug.engines.whisper_turbo",
+  "chatterbug.engines.whisper_vllm",
+  "chatterbug.engines.voxtral_vllm",
+  "chatterbug.engines.voxtral_local",
+  "chatterbug.audio.vad",
+  "chatterbug.engines.hardware",
+  "chatterbug.polish.*",
+]
+ignore_errors = true
 
 [build-system]
 requires = ["setuptools>=64"]

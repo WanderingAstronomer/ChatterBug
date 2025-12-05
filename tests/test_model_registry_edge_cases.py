@@ -1,25 +1,26 @@
 """Test model registry edge cases and normalization logic (TDD approach)."""
 import pytest
 
+from chatterbug.domain.model import DEFAULT_WHISPER_MODEL
 from chatterbug.engines.model_registry import normalize_model_name
 
 
 def test_normalize_model_name_with_none() -> None:
     """Test normalize_model_name returns default when given None."""
     result = normalize_model_name("whisper_turbo", None)
-    assert result == "distil-large-v3"  # faster-whisper short name for new default
+    assert result == DEFAULT_WHISPER_MODEL
     
     result = normalize_model_name("voxtral", None)
     assert result == "mistralai/Voxtral-Mini-3B-2507"  # full HF path
     
-    result = normalize_model_name("parakeet_rnnt", None)
-    assert result == "nvidia/parakeet-rnnt-1.1b"  # full HF path
+    result = normalize_model_name("whisper_vllm", None)
+    assert result == "openai/whisper-large-v3-turbo"
 
 
 def test_normalize_model_name_with_empty_string() -> None:
     """Test normalize_model_name handles empty string."""
     result = normalize_model_name("whisper_turbo", "")
-    assert result == "distil-large-v3"  # faster-whisper short name for new default
+    assert result == DEFAULT_WHISPER_MODEL  # default turbo CT2
 
 
 def test_normalize_model_name_with_whitespace() -> None:
@@ -56,6 +57,8 @@ def test_normalize_model_name_handles_partial_matches() -> None:
 def test_normalize_model_name_all_whisper_aliases() -> None:
     """Test all documented Whisper aliases normalize correctly to faster-whisper names."""
     aliases = {
+        "balanced": DEFAULT_WHISPER_MODEL,
+        "turbo-ct2": DEFAULT_WHISPER_MODEL,
         "turbo": "large-v3-turbo",
         "large-v3-turbo": "large-v3-turbo",
         "large-v3": "large-v3",
@@ -85,13 +88,17 @@ def test_normalize_model_name_all_voxtral_aliases() -> None:
         assert result == expected, f"Alias '{alias}' should resolve to '{expected}'"
 
 
-def test_normalize_model_name_all_parakeet_aliases() -> None:
-    """Test all documented Parakeet aliases normalize correctly."""
+def test_normalize_model_name_all_whisper_vllm_aliases() -> None:
+    """Test Whisper vLLM aliases normalize correctly to full HF names."""
     aliases = {
-        "parakeet": "nvidia/parakeet-rnnt-1.1b",
-        "parakeet-rnnt": "nvidia/parakeet-rnnt-1.1b",
+        "default": "openai/whisper-large-v3-turbo",
+        "balanced": "openai/whisper-large-v3-turbo",
+        "turbo": "openai/whisper-large-v3-turbo",
+        "large-v3-turbo": "openai/whisper-large-v3-turbo",
+        "v3": "openai/whisper-large-v3",
+        "large-v3": "openai/whisper-large-v3",
     }
     
     for alias, expected in aliases.items():
-        result = normalize_model_name("parakeet_rnnt", alias)
+        result = normalize_model_name("whisper_vllm", alias)
         assert result == expected, f"Alias '{alias}' should resolve to '{expected}'"

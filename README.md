@@ -1,52 +1,49 @@
 # ChatterBug
 
-Local-first ASR with pluggable engines (Whisper Turbo default, Voxtral smart mode optional, Parakeet RNNT running locally via NeMo). See `Planning and Documentation` for architecture and requirements.
+Local-first ASR with faster-whisper (CTranslate2) as the default engine and optional vLLM-backed Whisper/Voxtral engines for remote acceleration. See `Planning and Documentation` for architecture and requirements.
 
-## Requirements for all-local runs
+## Requirements
 - Python 3.11+
-- `ffmpeg` available on PATH (for decode)
-- `sounddevice`/PortAudio for microphone capture (installed with the base package; ensure OS-specific PortAudio libs are available)
-- GPU optional; CPU supported with int8 defaults.
-- Engine dependencies (faster-whisper, transformers, NeMo RNNT, silero VAD) install with the base package; models download on first use to `~/.cache/chatterbug/models`.
+- `ffmpeg` available on PATH for decode.
+- vLLM server reachable at `http://localhost:8000` for `whisper_vllm` / `voxtral_vllm` (optional). Use `chatterbug serve-vllm --model <model>` for a quick local server, or point `--vllm-endpoint` to an existing one.
+- `sounddevice`/PortAudio for microphone capture (installed with the base package; ensure OS-specific PortAudio libs are available).
+- GPU optional; CPU runs are supported but vLLM benefits from GPU for throughput. Models cache to `~/.cache/chatterbug/models` automatically.
 
 ## Installation
-- Base install with bundled engine deps: `pip install -e .`
+- Base install (includes OpenAI client, faster-whisper, transformers): `pip install -e .`
 - Optional extras:
 	- `pip install -e .[polish]` for grammar/fluency polishing (llama.cpp + HF hub download)
-	- `pip install -e .[hotkeys]` for hotkey listener (keyboard)
-	- `pip install -e .[gui]` for future desktop GUI shell (PySide6)
 	- `pip install -e .[dev]` for tests, typing, and linting tools
 
+## Engines and presets
+- Engines: `whisper_turbo` (default, CTranslate2 local), `voxtral_local` (transformers local), `whisper_vllm` (remote), `voxtral_vllm` (remote).
+- Presets: `high_accuracy` (whisper-large-v3, beam=2), `balanced` (default for vLLM; whisper-large-v3-turbo), `fast` (turbo tuned for speed). `--fast` aliases `preset=fast`.
+- Engines are stateful and push-based: `start()` → `push_audio()` → `flush()` → `poll_segments()`; the CLI orchestrates via `TranscriptionSession`.
+
 ## Key behaviors
-- Engines are stateful and push-based: `start()` → `push_audio()` → `flush()` → `poll_segments()`; the CLI/TUI/GUI orchestrate this via `TranscriptionSession`.
-- Whisper Turbo defaults to VAD-trimmed sliding windows with batched inference enabled for file transcription (`batch_size=16`). Batching provides 2-4x speedup for non-realtime processing.
-- Default model is `distil-whisper/distil-large-v3` for English (5x faster than large-v3-turbo with similar accuracy).
-- Disfluency cleaning is enabled by default (removes stutters, repeated words, stray hyphens). Use `--no-clean-disfluencies` to disable.
-- Default model/device/precision come from config; the device defaults to CPU unless explicitly set to `cuda` via config or CLI. CUDA uses float16 even when int8 is requested for stability.
+- `chatterbug transcribe` defaults to `whisper_turbo` (local faster-whisper) for offline/low-dependency use.
+- Disfluency cleaning is on by default for Whisper; toggle with `--no-clean-disfluencies`.
+- Default device/compute/model pull from config; device defaults to CPU unless overridden.
 
 ## Configuration
 - Config file: `~/.config/chatterbug/config.toml` (created on first run). CLI flags override config values.
-- Model cache: `~/.cache/chatterbug/models` (auto-created). Models load from local cache by default.
-- History: JSONL-backed history stored under `~/.cache/chatterbug/history/history.jsonl`; serialization uses Pydantic `model_dump()` for stability.
+- Key fields: `engine` (default `whisper_turbo`), `vllm_endpoint` (default `http://localhost:8000`), `model_cache_dir`, `device`, `compute_type`, `params`.
+- Model cache: `~/.cache/chatterbug/models` (auto-created).
+- History: JSONL-backed history stored under `~/.cache/chatterbug/history/history.jsonl`.
 
 ## CLI Usage
-- `chatterbug transcribe <file>` - Transcribe audio file to stdout
-- `--output <path>` - Write transcript to file
-- `--engine voxtral` or `--engine parakeet_rnnt` - Pick engine (Parakeet RNNT runs locally)
-- `--fast` - Enable fast mode: batched inference, distil-large-v3 for English, beam_size=1, optimized settings (tradeoff: speed vs slight accuracy reduction)
-- `--enable-batching --batch-size N` - Control batched Whisper Turbo (enabled by default for files with batch_size=16)
-- `--vad-filter/--no-vad-filter` and `--word-timestamps` - Control VAD trimming and word timing
-- `--no-clean-disfluencies` - Disable disfluency cleaning (enabled by default; removes stutters, repeated words, hyphens)
-- `--polish/--no-polish` and `--polish-model <name>` - Optional transcript polisher (defaults to Qwen2.5-1.5B-Instruct q4_k_m GGUF)
-- `--polish-max-tokens`, `--polish-temperature`, `--polish-gpu-layers`, `--polish-context-length` - Control llama.cpp polish generation
-- `--beam-size`, `--whisper-temperature` - Whisper decode knobs; unset defers to library defaults
-- `--prompt`, `--max-new-tokens`, `--gen-temperature` - Voxtral smart-mode knobs
-- `chatterbug listen` - Live microphone transcription (experimental; batching disabled for low latency)
-- `chatterbug check` - Verify prerequisites (ffmpeg, sounddevice)
+- `chatterbug transcribe <file>` - Transcribe audio file to stdout.
+- `--engine whisper_vllm|voxtral_vllm|whisper_turbo|voxtral_local` - Select engine.
+- `--preset high_accuracy|balanced|fast` (balanced default for vLLM engines); `--fast` shortcut for `preset=fast`.
+- `--vllm-endpoint http://host:port` - Target vLLM server for vLLM engines.
+- Whisper controls: `--enable-batching/--batch-size`, `--beam-size`, `--vad-filter/--no-vad-filter`, `--word-timestamps`, `--whisper-temperature`.
+- Voxtral controls: `--prompt`, `--max-new-tokens`, `--gen-temperature`.
+- Polisher: `--polish/--no-polish`, `--polish-model`, `--polish-max-tokens`, `--polish-temperature`, `--polish-gpu-layers`, `--polish-context-length`.
+- Output/UX: `--output <path>`, `--clipboard`, `--save-history`.
+- `chatterbug check` - Verify local prerequisites (ffmpeg, sounddevice).
+- `chatterbug check-vllm` - Validate connectivity and list models served by a vLLM endpoint.
+- `chatterbug serve-vllm --model <name>` - Convenience wrapper to launch `vllm serve` with sane defaults (use your own process manager for production).
 
 ## Development
-- Run tests: `pytest` (162 tests, strict type hints enforced). Pull-based legacy tests removed; all engines use push-based streaming shims.
+- Run tests: `pytest` (strict type hints enforced).
 - Code style: frozen dataclasses in domain; adapters avoid importing UI/app layers (ports-and-adapters).
-
-## GUI readiness
-`chatterbug/gui` contains a placeholder shell; desktop UI will reuse the same core app services (CLI/TUI already in place).

@@ -7,7 +7,7 @@ from chatterbug.polish.base import Polisher
 
 class PolishingSink(TranscriptSink):
     """Decorator that polishes text before forwarding to inner sink.
-    
+
     This implements the Decorator pattern to keep polishing as a separate
     concern from core transcription, following the Single Responsibility Principle.
     """

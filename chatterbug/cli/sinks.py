@@ -13,3 +13,11 @@ from chatterbug.app.sinks import (  # noqa: F401
     HistorySink,
     StdoutSink,
 )
+
+__all__ = [
+    "ClipboardSink",
+    "CompositeSink",
+    "FileSink",
+    "HistorySink",
+    "StdoutSink",
+]

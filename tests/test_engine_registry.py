@@ -11,9 +11,11 @@ def test_engine_registry_contains_all_engines():
     # Trigger registration
     _register_engines()
     
+    assert "whisper_vllm" in ENGINE_REGISTRY
+    assert "voxtral_vllm" in ENGINE_REGISTRY
     assert "whisper_turbo" in ENGINE_REGISTRY
-    assert "voxtral" in ENGINE_REGISTRY
-    assert "parakeet_rnnt" in ENGINE_REGISTRY
+    assert "voxtral_local" in ENGINE_REGISTRY
+    assert "voxtral" in ENGINE_REGISTRY  # legacy alias
 
 
 def test_engine_registry_stores_classes():
@@ -45,7 +47,7 @@ def test_build_engine_with_unknown_kind_raises():
     """Test that building unknown engine kind raises ValueError."""
     config = EngineConfig()
     
-    with pytest.raises(ValueError, match="Unknown engine kind"):
+    with pytest.raises(ConfigurationError, match="Unknown engine kind"):
         build_engine("nonexistent_engine", config)  # type: ignore[arg-type]
 
 
@@ -61,8 +63,8 @@ def test_registry_lazy_initialization():
     config = EngineConfig()
     engine = build_engine("whisper_turbo", config)
     
-    # Registry should now be populated
-    assert len(ENGINE_REGISTRY) == 3
+    # Registry should now be populated (whisper_vllm, voxtral_vllm, whisper_turbo, voxtral_local, voxtral)
+    assert len(ENGINE_REGISTRY) == 5
     assert isinstance(engine, TranscriptionEngine)
 
 

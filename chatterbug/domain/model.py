@@ -8,8 +8,14 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from .constants import Device, ComputeType
 
 DEFAULT_MODEL_CACHE_DIR = Path.home() / ".cache" / "chatterbug" / "models"
+DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
 
-EngineKind = Literal["whisper_turbo", "voxtral", "parakeet_rnnt"]
+# vLLM engines are now primary; local/fallback engines preserved for offline use
+# "voxtral" is deprecated alias for "voxtral_local" (backward compatibility)
+EngineKind = Literal["whisper_vllm", "voxtral_vllm", "whisper_turbo", "voxtral_local", "voxtral"]
+
+# Transcription presets for accuracy vs speed trade-offs
+TranscriptionPreset = Literal["high_accuracy", "balanced", "fast"]
 
 
 def _sanitize_params(params: Mapping[str, str] | None) -> dict[str, str]:
@@ -39,7 +45,7 @@ class TranscriptSegment(BaseModel):
 
 class EngineMetadata(BaseModel):
     """Metadata about a transcription engine instance.
-    
+
     This provides a type-safe way for engines to expose their configuration
     and runtime information, avoiding the need for attribute introspection.
     """
@@ -51,9 +57,9 @@ class EngineMetadata(BaseModel):
 
 class EngineConfig(BaseModel):
     model_config = ConfigDict(frozen=True)
-    model_name: str = "distil-whisper/distil-large-v3"
-    compute_type: str = "int8"
-    device: str = "cpu"
+    model_name: str = DEFAULT_WHISPER_MODEL
+    compute_type: str = "auto"
+    device: str = "auto"
     model_cache_dir: str | None = str(DEFAULT_MODEL_CACHE_DIR)
     params: Mapping[str, str] = Field(default_factory=dict)
 
@@ -73,15 +79,18 @@ class EngineConfig(BaseModel):
     @field_validator("compute_type")
     @classmethod
     def validate_compute_type(cls, v: str) -> str:
+        if v == "auto":
+            return v
         valid_types = {ct.value for ct in ComputeType}
         if v not in valid_types:
-            raise ValueError(f"Invalid compute_type: {v}; must be one of {', '.join(valid_types)}")
+            raise ValueError(f"Invalid compute_type: {v}; must be one of {', '.join(valid_types)} or auto")
         return v
 
 
 class TranscriptionOptions(BaseModel):
     model_config = ConfigDict(frozen=True)
     language: str = "en"
+    preset: TranscriptionPreset | None = None
     max_duration_s: float | None = None
     beam_size: int | None = None
     temperature: float | None = None

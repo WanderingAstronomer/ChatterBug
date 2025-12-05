@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from typing import Dict
 
-from chatterbug.domain.model import EngineKind
+from chatterbug.domain.model import DEFAULT_WHISPER_MODEL, EngineKind
 
 # Verified model names for faster-whisper (accepts short names or full Systran paths)
 WHISPER_MODELS: Dict[str, str] = {
+    DEFAULT_WHISPER_MODEL: DEFAULT_WHISPER_MODEL,
     "openai/whisper-large-v3-turbo": "large-v3-turbo",
     "distil-whisper/distil-large-v3": "distil-large-v3",
     "openai/whisper-large-v3": "large-v3",
@@ -15,23 +16,49 @@ WHISPER_MODELS: Dict[str, str] = {
     "openai/whisper-tiny": "tiny",
 }
 
+# Whisper models for vLLM (uses full HuggingFace names, no short aliases)
+WHISPER_VLLM_MODELS: Dict[str, str] = {
+    "openai/whisper-large-v3": "openai/whisper-large-v3",
+    "openai/whisper-large-v3-turbo": "openai/whisper-large-v3-turbo",
+    "openai/whisper-medium": "openai/whisper-medium",
+    "openai/whisper-small": "openai/whisper-small",
+    "openai/whisper-base": "openai/whisper-base",
+    "openai/whisper-tiny": "openai/whisper-tiny",
+}
+
 VOXTRAL_MODELS: Dict[str, str] = {
     "mistralai/Voxtral-Mini-3B-2507": "https://huggingface.co/mistralai/Voxtral-Mini-3B-2507",
     "mistralai/Voxtral-Small-24B-2507": "https://huggingface.co/mistralai/Voxtral-Small-24B-2507",
 }
 
-PARAKEET_MODELS: Dict[str, str] = {
-    "nvidia/parakeet-rnnt-1.1b": "https://huggingface.co/nvidia/parakeet-rnnt-1.1b",
-}
-
 _DEFAULTS = {
-    "whisper_turbo": "distil-whisper/distil-large-v3",
-    "voxtral": "mistralai/Voxtral-Mini-3B-2507",
-    "parakeet_rnnt": "nvidia/parakeet-rnnt-1.1b",
+    "whisper_vllm": "openai/whisper-large-v3-turbo",  # Balanced default for vLLM
+    "whisper_turbo": DEFAULT_WHISPER_MODEL,
+    "voxtral": "mistralai/Voxtral-Mini-3B-2507",  # Legacy alias, maps to voxtral_local
+    "voxtral_local": "mistralai/Voxtral-Mini-3B-2507",
+    "voxtral_vllm": "mistralai/Voxtral-Mini-3B-2507",
 }
 
 _ALIASES: Dict[str, Dict[str, str]] = {
+    "whisper_vllm": {
+        "default": "openai/whisper-large-v3-turbo",
+        "balanced": "openai/whisper-large-v3-turbo",
+        "turbo": "openai/whisper-large-v3-turbo",
+        "large-v3-turbo": "openai/whisper-large-v3-turbo",
+        "v3": "openai/whisper-large-v3",
+        "large-v3": "openai/whisper-large-v3",
+        "v3-turbo": "openai/whisper-large-v3-turbo",
+        "medium": "openai/whisper-medium",
+        "small": "openai/whisper-small",
+        "base": "openai/whisper-base",
+        "tiny": "openai/whisper-tiny",
+    },
     "whisper_turbo": {
+        "default": DEFAULT_WHISPER_MODEL,
+        "balanced": DEFAULT_WHISPER_MODEL,
+        "turbo-ct2": DEFAULT_WHISPER_MODEL,
+        "large-v3-turbo-ct2": DEFAULT_WHISPER_MODEL,
+        "deepdml/faster-whisper-large-v3-turbo-ct2": DEFAULT_WHISPER_MODEL,
         "turbo": "openai/whisper-large-v3-turbo",
         "large-v3-turbo": "openai/whisper-large-v3-turbo",
         "large-v3": "openai/whisper-large-v3",
@@ -41,35 +68,62 @@ _ALIASES: Dict[str, Dict[str, str]] = {
         "base": "openai/whisper-base",
         "tiny": "openai/whisper-tiny",
     },
-    "voxtral": {
+    "voxtral": {  # Legacy alias for voxtral_local
         "voxtral-mini": "mistralai/Voxtral-Mini-3B-2507",
         "voxtral-small": "mistralai/Voxtral-Small-24B-2507",
         "mini": "mistralai/Voxtral-Mini-3B-2507",
         "small": "mistralai/Voxtral-Small-24B-2507",
     },
-    "parakeet_rnnt": {
-        "parakeet": "nvidia/parakeet-rnnt-1.1b",
-        "parakeet-rnnt": "nvidia/parakeet-rnnt-1.1b",
+    "voxtral_local": {
+        "voxtral-mini": "mistralai/Voxtral-Mini-3B-2507",
+        "voxtral-small": "mistralai/Voxtral-Small-24B-2507",
+        "mini": "mistralai/Voxtral-Mini-3B-2507",
+        "small": "mistralai/Voxtral-Small-24B-2507",
+    },
+    "voxtral_vllm": {
+        "voxtral-mini": "mistralai/Voxtral-Mini-3B-2507",
+        "voxtral-small": "mistralai/Voxtral-Small-24B-2507",
+        "mini": "mistralai/Voxtral-Mini-3B-2507",
+        "small": "mistralai/Voxtral-Small-24B-2507",
     },
 }
 
 
 def normalize_model_name(kind: EngineKind, name: str | None) -> str:
     """Resolve aliases and provide defaults per engine kind.
-    
+
     For whisper_turbo: maps full names to shorter faster-whisper compatible names
     (e.g., "openai/whisper-large-v3" -> "large-v3"). faster-whisper accepts both formats.
+
+    For whisper_vllm and voxtral_vllm: uses full HuggingFace model names as expected by vLLM.
+
+    If a model name from a different engine is passed (e.g., whisper model for voxtral),
+    falls back to the default for the requested engine kind.
     """
     default = _DEFAULTS.get(kind)
     if not name:
         name = default or ""
     else:
+        # Check if this is a model name from a different engine - if so, use default
+        if kind in ("voxtral", "voxtral_local", "voxtral_vllm"):
+            # If passed a whisper model, use voxtral default
+            if name in WHISPER_MODELS or name in WHISPER_VLLM_MODELS or any(name.startswith(p) for p in ["distil-whisper/", "openai/whisper"]):
+                name = default or ""
+        elif kind in ("whisper_turbo", "whisper_vllm"):
+            # If passed a voxtral model, use whisper default
+            if name in VOXTRAL_MODELS or name.startswith("mistralai/"):
+                name = default or ""
+
         alias = _ALIASES.get(kind, {})
-        lookup = alias.get(name.lower())
-        name = lookup or name
-    
+        lookup = alias.get(name.lower()) if name else None
+        name = lookup or name or default or ""
+
     # For whisper_turbo, prefer short names for faster-whisper (better compatibility)
     if kind == "whisper_turbo" and name in WHISPER_MODELS:
         return WHISPER_MODELS[name]
-    
+
+    # For whisper_vllm, use full HuggingFace names
+    if kind == "whisper_vllm" and name in WHISPER_VLLM_MODELS:
+        return WHISPER_VLLM_MODELS[name]
+
     return name

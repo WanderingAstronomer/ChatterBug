@@ -1,15 +1,15 @@
 """Test EngineConfig validation and param sanitization."""
 import pytest
 
-from chatterbug.domain.model import EngineConfig
+from chatterbug.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig
 
 
 def test_engine_config_defaults() -> None:
     """Test default EngineConfig values."""
     cfg = EngineConfig()
-    assert cfg.model_name == "distil-whisper/distil-large-v3"
-    assert cfg.compute_type == "int8"
-    assert cfg.device == "cpu"
+    assert cfg.model_name == DEFAULT_WHISPER_MODEL
+    assert cfg.compute_type == "auto"
+    assert cfg.device == "auto"
     assert cfg.params == {}
 
 
@@ -33,7 +33,7 @@ def test_engine_config_validates_compute_type() -> None:
 
 def test_engine_config_accepts_valid_compute_types() -> None:
     """Test all valid compute types are accepted."""
-    valid_types = ["int8", "int8_float16", "float16", "float32", "fp16", "fp32"]
+    valid_types = ["auto", "int8", "int8_float16", "float16", "float32", "fp16", "fp32"]
     for ct in valid_types:
         cfg = EngineConfig(compute_type=ct)
         assert cfg.compute_type == ct

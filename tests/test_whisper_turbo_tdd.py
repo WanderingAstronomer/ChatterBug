@@ -4,7 +4,7 @@ from unittest.mock import patch, MagicMock, call
 from pathlib import Path
 
 from chatterbug.engines.whisper_turbo import WhisperTurboEngine
-from chatterbug.domain.model import EngineConfig, TranscriptionOptions, AudioChunk
+from chatterbug.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig, TranscriptionOptions, AudioChunk
 from chatterbug.audio.sources import FileSource
 
 
@@ -20,11 +20,11 @@ class TestWhisperTurboInitialization:
         config = _config()
         engine = WhisperTurboEngine(config)
         
-        assert engine.model_name == "distil-large-v3"
-        assert engine.device == "cpu"
-        assert engine.precision == "int8"
-        assert engine.enable_batching is False
-        assert engine.batch_size == 1
+        assert engine.model_name == DEFAULT_WHISPER_MODEL
+        assert engine.device in {"cpu", "cuda"}
+        assert engine.precision in {"int8", "int8_float16", "float16", "bfloat16"}
+        assert engine.enable_batching is True
+        assert engine.batch_size == 8
         assert engine.clean_disfluencies is True  # New default
 
     def test_init_model_name_normalization(self) -> None:
@@ -120,15 +120,15 @@ class TestWhisperTurboModelLoading:
                 batched_call_args = mock_batched.call_args[0]
                 assert batched_call_args[0] == mock_instance
                 batched_call_kwargs = mock_batched.call_args[1]
-                assert batched_call_kwargs.get("batch_size", 1) == engine.batch_size
+                assert batched_call_kwargs.get("batch_size", engine.batch_size) == engine.batch_size
                 assert engine._pipeline == mock_batched_instance
 
 
 class TestWhisperTurboTranscription:
     """Test transcription with proper API usage."""
 
-    def test_transcribe_only_passes_non_none_beam_size(self) -> None:
-        """beam_size only passed to transcribe() if not None."""
+    def test_transcribe_uses_default_beam_size_when_unset(self) -> None:
+        """beam_size falls back to preset default when not provided."""
         config = _config(params={"enable_batching": "true"})
         engine = WhisperTurboEngine(config)
         
@@ -151,14 +151,14 @@ class TestWhisperTurboTranscription:
                 end_s=1.0
             )
             
-            # Test with beam_size=None (default)
+            # Test with beam_size=None (default -> preset)
             options = TranscriptionOptions(beam_size=None)
             engine.start(options)
             engine.push_audio(chunk.samples, int(chunk.start_s * 1000))
             engine.flush()
             
             call_kwargs = mock_batched_instance.transcribe.call_args[1]
-            assert "beam_size" not in call_kwargs
+            assert call_kwargs["beam_size"] == engine.default_beam_size
 
     def test_transcribe_passes_beam_size_when_set(self) -> None:
         """beam_size passed when explicitly set."""
@@ -192,8 +192,8 @@ class TestWhisperTurboTranscription:
             call_kwargs = mock_batched_instance.transcribe.call_args[1]
             assert call_kwargs["beam_size"] == 10
 
-    def test_transcribe_only_passes_non_none_temperature(self) -> None:
-        """temperature only passed when set."""
+    def test_transcribe_passes_temperature_default_when_unset(self) -> None:
+        """temperature defaults to preset when not set."""
         config = _config(params={"enable_batching": "true"})
         engine = WhisperTurboEngine(config)
         
@@ -224,7 +224,7 @@ class TestWhisperTurboTranscription:
             engine.flush()
             
             call_kwargs = mock_batched_instance.transcribe.call_args[1]
-            assert "temperature" not in call_kwargs
+            assert call_kwargs["temperature"] == engine.default_temperature
 
     def test_transcribe_passes_batch_size_param(self) -> None:
         """batch_size parameter passed to transcribe()."""

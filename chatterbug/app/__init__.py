@@ -5,8 +5,12 @@ import structlog
 
 from .transcription_session import TranscriptionSession, SessionConfig  # noqa: F401
 
-def configure_logging():
+def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
+    # Silence verbose engine/VAD progress logs that write to stdout
+    logging.getLogger("faster_whisper").setLevel(logging.ERROR)
+    logging.getLogger("faster_whisper.transcribe").setLevel(logging.ERROR)
+    logging.getLogger("whisper").setLevel(logging.ERROR)
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,
@@ -17,4 +21,10 @@ def configure_logging():
         logger_factory=structlog.stdlib.LoggerFactory(),
         cache_logger_on_first_use=True,
     )
+
+__all__ = [
+    "TranscriptionSession",
+    "SessionConfig",
+    "configure_logging",
+]
 

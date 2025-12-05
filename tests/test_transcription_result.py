@@ -59,27 +59,27 @@ def test_transcription_result_voxtral_engine(sample_segments: tuple[TranscriptSe
         model_name="mistralai/Voxtral-Mini-3B-2507",
         device="cuda",
         precision="float16",
-        engine="voxtral",
+        engine="voxtral_local",
         duration_s=2.5,
     )
-    assert result.engine == "voxtral"
+    assert result.engine == "voxtral_local"
     assert "Voxtral" in result.model_name
     assert result.device == "cuda"
 
 
-def test_transcription_result_parakeet_engine(sample_segments: tuple[TranscriptSegment, ...]) -> None:
-    """Test TranscriptionResult with Parakeet engine."""
+def test_transcription_result_whisper_vllm(sample_segments: tuple[TranscriptSegment, ...]) -> None:
+    """Test TranscriptionResult with Whisper vLLM engine."""
     result = TranscriptionResult(
-        text="Riva transcription",
+        text="vLLM transcription",
         segments=sample_segments,
-        model_name="nvidia/parakeet-rnnt-1.1b",
-        device="cpu",
-        precision="fp32",
-        engine="parakeet_rnnt",
-        duration_s=1.5,
+        model_name="openai/whisper-large-v3",
+        device="cuda",
+        precision="bfloat16",
+        engine="whisper_vllm",
+        duration_s=2.0,
     )
-    assert result.engine == "parakeet_rnnt"
-    assert "parakeet" in result.model_name
+    assert result.engine == "whisper_vllm"
+    assert "whisper" in result.model_name
 
 
 def test_transcription_result_immutable(sample_segments: tuple[TranscriptSegment, ...]) -> None:

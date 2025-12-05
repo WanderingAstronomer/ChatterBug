@@ -8,15 +8,20 @@ import pytest
 from typer.testing import CliRunner
 
 from chatterbug.cli.main import app
+from chatterbug.domain.model import DEFAULT_WHISPER_MODEL
 
 
 class _FakeConfig:
-    model_name = "distil-whisper/distil-large-v3"
+    model_name = DEFAULT_WHISPER_MODEL
     engine = "whisper_turbo"
-    compute_type = "int8"
-    device = "cpu"
+    compute_type = "auto"
+    device = "auto"
     model_cache_dir = "/tmp/chatterbug-model-cache"
-    params: Dict[str, str] = {}
+    params: Dict[str, str] = {
+        "enable_batching": "false",
+        "batch_size": "1",
+        "word_timestamps": "false",
+    }
     history_dir = "/tmp/chatterbug-history"
     history_limit = 20
     numexpr_max_threads = None
@@ -81,6 +86,7 @@ def test_cli_transcribe_defaults_enable_batching(tmp_path: Path, monkeypatch: py
     assert cfg.params["word_timestamps"] == "false"
     # Clean disfluencies enabled by default
     assert cfg.params["clean_disfluencies"] == "true"
+    # Note: preset is only set for vLLM engines by default, not whisper_turbo
 
 
 def test_cli_transcribe_enable_batching_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -108,7 +114,7 @@ def test_cli_transcribe_enable_batching_flag(tmp_path: Path, monkeypatch: pytest
 
 
 def test_cli_transcribe_fast_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Test that --fast flag enables optimized settings."""
+    """Test that --fast flag enables optimized settings for whisper_turbo."""
     calls = _setup_cli_fixtures(monkeypatch)
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"data")
@@ -123,8 +129,10 @@ def test_cli_transcribe_fast_flag(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     # Fast mode should enable batching with batch_size >= 16
     assert cfg.params["enable_batching"] == "true"
     assert int(cfg.params["batch_size"]) >= 16
-    # Fast mode should use distil-large-v3 for English
-    assert cfg.model_name == "distil-large-v3"
+    # Fast mode for whisper_turbo uses the CT2 turbo model
+    assert "turbo" in cfg.model_name.lower()
+    assert cfg.compute_type in {"int8", "int8_float16", "float16"}
+    assert cfg.params["preset"] == "fast"
     # Check beam_size in options
     start_args = calls["start_args"]
     options = start_args[3]

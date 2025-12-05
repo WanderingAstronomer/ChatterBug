@@ -25,3 +25,25 @@ from .exceptions import (  # noqa: F401
     SessionError,
     DependencyError,
 )
+
+__all__ = [
+    "AudioChunk",
+    "AudioSource",
+    "EngineConfig",
+    "EngineKind",
+    "EngineMetadata",
+    "TranscriptSegment",
+    "TranscriptionEngine",
+    "TranscriptionRequest",
+    "TranscriptionResult",
+    "TranscriptionOptions",
+    "TranscriptSink",
+    "Device",
+    "ComputeType",
+    "ChatterBugError",
+    "EngineError",
+    "AudioDecodeError",
+    "ConfigurationError",
+    "SessionError",
+    "DependencyError",
+]

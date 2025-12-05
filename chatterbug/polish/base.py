@@ -28,7 +28,6 @@ class Polisher(Protocol):
 
     def polish(self, text: str) -> str:  # pragma: no cover - Protocol definition
         ...
-        """Return a polished version of the transcript text."""
 
 
 class NullPolisher:

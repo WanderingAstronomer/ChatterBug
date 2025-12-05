@@ -3,7 +3,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 from chatterbug.engines.whisper_turbo import WhisperTurboEngine
-from chatterbug.domain.model import EngineConfig, TranscriptionOptions, AudioChunk
+from chatterbug.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig, TranscriptionOptions, AudioChunk
 from chatterbug.engines.model_registry import normalize_model_name
 
 
@@ -47,9 +47,9 @@ def test_whisper_model_name_normalization_to_faster_whisper_format() -> None:
     Regression test for: Model normalization must map full HF names to faster-whisper short names.
     E.g., "openai/whisper-large-v3-turbo" -> "large-v3-turbo"
     """
-    # Test default model (now distil-large-v3)
+    # Test default model (balanced turbo CT2)
     normalized = normalize_model_name("whisper_turbo", None)
-    assert normalized == "distil-large-v3", f"Expected faster-whisper format, got {normalized}"
+    assert normalized == DEFAULT_WHISPER_MODEL, f"Expected faster-whisper format, got {normalized}"
     
     # Test alias resolution
     normalized = normalize_model_name("whisper_turbo", "turbo")

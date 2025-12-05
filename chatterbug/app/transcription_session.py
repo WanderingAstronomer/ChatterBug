@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 import queue
+import typing
 from dataclasses import dataclass
 from threading import Event, Lock, Thread
 from typing import Optional
 
 import structlog
 
-from chatterbug.app.metrics import metrics
 from chatterbug.domain.model import (
     AudioChunk,
     AudioSource,
@@ -26,7 +26,7 @@ logger = structlog.get_logger()
 @dataclass(frozen=True)
 class SessionConfig:
     """Configuration for TranscriptionSession behavior.
-    
+
     These parameters control queue sizes and thread coordination behavior,
     allowing tuning for different performance/memory tradeoffs.
     """
@@ -103,8 +103,7 @@ class TranscriptionSession:
                     self._segment_queue.put_nowait(self._segment_stop)
                 except Exception:
                     pass
-        # Join threads outside the lock to avoid deadlock
-        # Use timeout to prevent hanging indefinitely
+        # Join threads outside the lock to avoid deadlock and hangs
         for thread in self._threads:
             if thread.is_alive():
                 thread.join(timeout=self._config.thread_join_timeout_sec)
@@ -162,7 +161,7 @@ class TranscriptionSession:
 
         try:
             engine.start(options)
-            
+
             while not self._stop_event.is_set():
                 try:
                     item = self._audio_queue.get(timeout=0.05)
@@ -173,18 +172,14 @@ class TranscriptionSession:
 
                 if item is self._audio_stop:
                     break
-                
+
                 if isinstance(item, AudioChunk):
                     # Convert AudioChunk to bytes and timestamp
                     ts_ms = int(item.start_s * 1000)
                     engine.push_audio(item.samples, ts_ms)
-                    
-                    # Update metrics
-                    metrics.audio_queue_depth = self._audio_queue.qsize()
-                    metrics.segment_queue_depth = self._segment_queue.qsize()
-                
+
                 self._poll_and_emit(engine)
-            
+
             # Flush remaining audio
             engine.flush()
             self._poll_and_emit(engine)
@@ -200,6 +195,7 @@ class TranscriptionSession:
                 pass
 
     def _poll_and_emit(self, engine: TranscriptionEngine) -> None:
+        assert self._segment_queue is not None
         segments = engine.poll_segments()
         for seg in segments:
             while not self._stop_event.is_set():
@@ -225,7 +221,7 @@ class TranscriptionSession:
                     continue
                 if item is self._segment_stop:
                     break
-                segment = item  # type: ignore[assignment]
+                segment = typing.cast(TranscriptSegment, item)
                 if self._stop_event.is_set():
                     continue
                 segments.append(segment)
@@ -234,13 +230,12 @@ class TranscriptionSession:
             stopped_by_user = self._stop_event.is_set() and self._exception is None
             # Only surface completion if not explicitly cancelled
             if not stopped_by_user:
-                warnings = tuple()
+                warnings: tuple[str, ...] = tuple()
                 if self._exception is not None:
                     warnings = (f"error: {self._exception}",)
                 # Normalize whitespace to avoid double spaces from engine outputs
                 raw_text = " ".join(seg.text.strip() for seg in segments)
                 normalized_text = " ".join(raw_text.split())
-                # Use engine's metadata property instead of getattr
                 metadata = engine.metadata
                 result = TranscriptionResult(
                     text=normalized_text,

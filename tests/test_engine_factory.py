@@ -5,8 +5,9 @@ from chatterbug.domain.model import EngineConfig
 from chatterbug.domain.exceptions import ConfigurationError
 from chatterbug.engines.factory import build_engine
 from chatterbug.engines.whisper_turbo import WhisperTurboEngine
-from chatterbug.engines.voxtral import VoxtralEngine
-from chatterbug.engines.parakeet import ParakeetEngine
+from chatterbug.engines.whisper_vllm import WhisperVLLMEngine
+from chatterbug.engines.voxtral_local import VoxtralLocalEngine
+from chatterbug.engines.voxtral_vllm import VoxtralVLLMEngine
 
 
 def test_build_whisper_turbo_engine() -> None:
@@ -18,18 +19,25 @@ def test_build_whisper_turbo_engine() -> None:
 
 
 def test_build_voxtral_engine() -> None:
-    """Test factory builds VoxtralEngine."""
+    """Test factory builds VoxtralLocalEngine via legacy alias."""
     cfg = EngineConfig(model_name="voxtral-mini")
     engine = build_engine("voxtral", cfg)
-    assert isinstance(engine, VoxtralEngine)
+    assert isinstance(engine, VoxtralLocalEngine)
     assert "Voxtral" in engine.model_name
 
 
-def test_build_parakeet_engine() -> None:
-    """Test factory builds ParakeetEngine."""
-    cfg = EngineConfig()
-    engine = build_engine("parakeet_rnnt", cfg)
-    assert isinstance(engine, ParakeetEngine)
+def test_build_voxtral_vllm_engine() -> None:
+    """Test factory builds VoxtralVLLMEngine."""
+    cfg = EngineConfig(model_name="voxtral-mini")
+    engine = build_engine("voxtral_vllm", cfg)
+    assert isinstance(engine, VoxtralVLLMEngine)
+
+
+def test_build_whisper_vllm_engine() -> None:
+    """Test factory builds WhisperVLLMEngine."""
+    cfg = EngineConfig(model_name="openai/whisper-large-v3-turbo")
+    engine = build_engine("whisper_vllm", cfg)
+    assert isinstance(engine, WhisperVLLMEngine)
 
 
 def test_build_engine_with_unknown_kind() -> None:

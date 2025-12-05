@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from threading import Event
-from typing import Iterable, Protocol
+from typing import Any, Iterable, Protocol
 
 from chatterbug.domain.exceptions import DependencyError
 
@@ -48,12 +48,12 @@ class SoundDeviceRecorder:
         blocksize = int(sample_rate * (chunk_ms / 1000))
         q: "queue.SimpleQueue[bytes]" = queue.SimpleQueue()
 
-        def callback(indata, frames, time_info, status) -> None:  # type: ignore[no-untyped-def]
+        def callback(indata: Any, frames: Any, time_info: Any, status: Any) -> None:
             if status:  # underflow/overflow/etc.
                 logging.warning("Microphone status: %s", status)
             q.put(bytes(indata))
 
-        with self._sd.InputStream(  # type: ignore[attr-defined]
+        with self._sd.InputStream(
             samplerate=sample_rate,
             channels=channels,
             dtype=self.dtype,

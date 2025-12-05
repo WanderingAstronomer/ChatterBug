@@ -1,6 +1,9 @@
 # CHANGES.md
 CHANGES.md
 
+# Staged-for-later features (not shipped in MVP)
+future_planned/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

@@ -1,20 +1,25 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Mapping
 
 from pydantic import BaseModel, Field, field_validator
 
-from chatterbug.domain.model import DEFAULT_MODEL_CACHE_DIR, EngineKind
+from chatterbug.domain.model import DEFAULT_MODEL_CACHE_DIR, DEFAULT_WHISPER_MODEL, EngineKind
 from chatterbug.domain.exceptions import ConfigurationError
+
+logger = logging.getLogger(__name__)
 
 
 class AppConfig(BaseModel):
-    model_name: str = "distil-whisper/distil-large-v3"
-    engine: EngineKind = "whisper_turbo"
-    compute_type: str = "int8"
-    device: str = "cpu"
+    model_name: str = DEFAULT_WHISPER_MODEL
+    engine: EngineKind = "whisper_turbo"  # Local engine is default (works out of the box)
+    compute_type: str = "auto"
+    device: str = "auto"
     model_cache_dir: str | None = str(DEFAULT_MODEL_CACHE_DIR)
+    vllm_endpoint: str = "http://localhost:8000"  # Default vLLM server endpoint
+    allow_local_fallback: bool = False  # Explicit opt-in for auto-fallback to local engines
     chunk_ms: int = 960
     history_limit: int = 20
     history_dir: str = str(Path.home() / ".cache" / "chatterbug" / "history")
@@ -41,7 +46,7 @@ class AppConfig(BaseModel):
     @field_validator("compute_type")
     @classmethod
     def validate_compute_type(cls, v: str) -> str:
-        allowed = {"int8", "int8_float16", "float16", "float32", "fp16", "fp32"}
+        allowed = {"auto", "int8", "int8_float16", "float16", "float32", "fp16", "fp32"}
         if v not in allowed:
             raise ValueError("Invalid compute_type")
         return v
@@ -78,6 +83,30 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     else:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
+
+        # Migrate deprecated engines before validation
+        if "engine" in data:
+            engine = data["engine"]
+
+            # Migrate parakeet_rnnt -> whisper_vllm
+            if engine == "parakeet_rnnt":
+                logger.warning(
+                    "⚠ Parakeet engine removed; migrated to whisper_vllm with large-v3-turbo "
+                    "(comparable accuracy). Update ~/.config/chatterbug/config.toml."
+                )
+                data["engine"] = "whisper_vllm"
+                # Use large-v3-turbo as Parakeet replacement (RNNT-class accuracy)
+                if "model_name" not in data or data["model_name"] == DEFAULT_WHISPER_MODEL:
+                    data["model_name"] = "openai/whisper-large-v3-turbo"
+
+            # Migrate voxtral -> voxtral_local (backward compat)
+            elif engine == "voxtral":
+                logger.warning(
+                    "⚠ Engine 'voxtral' renamed to 'voxtral_local'. "
+                    "Update config; existing behavior unchanged."
+                )
+                data["engine"] = "voxtral_local"
+
         cfg = AppConfig.model_validate(data)
 
     # Ensure model cache directory exists if provided

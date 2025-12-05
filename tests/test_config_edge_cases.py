@@ -6,6 +6,7 @@ from typing import Mapping
 from pydantic import ValidationError
 
 from chatterbug.config.schema import AppConfig, load_config
+from chatterbug.domain.model import DEFAULT_WHISPER_MODEL
 
 
 def test_app_config_from_dict_with_invalid_types() -> None:
@@ -40,7 +41,7 @@ def test_validate_config_rejects_negative_chunk_ms() -> None:
 
 def test_validate_config_accepts_valid_compute_types() -> None:
     """Test _validate_config accepts all valid compute types."""
-    valid_types = ["int8", "int8_float16", "float16", "float32", "fp16"]
+    valid_types = ["auto", "int8", "int8_float16", "float16", "float32", "fp16"]
     
     for ct in valid_types:
         cfg = AppConfig(compute_type=ct)
@@ -72,9 +73,9 @@ def test_load_config_with_nonexistent_file_uses_defaults(tmp_path: Path) -> None
     nonexistent = tmp_path / "nonexistent.toml"
     cfg = load_config(nonexistent)
     
-    assert cfg.model_name == "distil-whisper/distil-large-v3"
-    assert cfg.engine == "whisper_turbo"
-    assert cfg.device == "cpu"
+    assert cfg.model_name == DEFAULT_WHISPER_MODEL
+    assert cfg.engine == "whisper_turbo"  # Local engine is default (works out of the box)
+    assert cfg.device == "auto"
 
 
 def test_load_config_with_partial_config(tmp_path: Path) -> None:
@@ -85,7 +86,7 @@ def test_load_config_with_partial_config(tmp_path: Path) -> None:
     cfg = load_config(config_path)
     assert cfg.device == "cuda"  # Overridden
     assert cfg.compute_type == "float16"  # Overridden
-    assert cfg.model_name == "distil-whisper/distil-large-v3"  # Default
+    assert cfg.model_name == DEFAULT_WHISPER_MODEL  # Default
 
 
 def test_load_config_with_invalid_toml(tmp_path: Path) -> None:
