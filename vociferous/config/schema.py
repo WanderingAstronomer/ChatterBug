@@ -4,6 +4,9 @@ import logging
 from pathlib import Path
 from typing import Mapping
 
+import tomllib
+import tomli_w
+
 from pydantic import BaseModel, Field, field_validator
 
 from vociferous.domain.model import DEFAULT_MODEL_CACHE_DIR, DEFAULT_WHISPER_MODEL, EngineKind
@@ -71,8 +74,6 @@ class AppConfig(BaseModel):
         # We use model_validate to parse the dict.
         return cls.model_validate(data)
 
-import tomllib
-
 
 def load_config(config_path: Path | None = None) -> AppConfig:
     if config_path is None:
@@ -133,6 +134,5 @@ def save_config(config: AppConfig, config_path: Path | None = None) -> None:
     config_dict = config.model_dump(exclude_none=True)
     
     # Write to TOML file
-    import tomli_w
     with open(config_path, "wb") as f:
         tomli_w.dump(config_dict, f)

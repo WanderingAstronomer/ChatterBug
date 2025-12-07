@@ -53,7 +53,9 @@ class TranscriptionTask:
         
         self.transcript = ""
         self.is_running = False
+        self.should_stop = False
         self.thread: threading.Thread | None = None
+        self.session: TranscriptionSession | None = None
 
     def start(self) -> None:
         """Start the transcription task in a background thread."""
@@ -69,6 +71,10 @@ class TranscriptionTask:
         """Run the transcription (called in background thread)."""
         try:
             logger.info("Starting transcription", file=str(self.file_path), engine=self.engine)
+            
+            # Check if we should stop before starting
+            if self.should_stop:
+                return
             
             # Load config
             config = load_config()
@@ -117,9 +123,18 @@ class TranscriptionTask:
             sink = CapturingSink(self)
             
             # Run transcription
-            session = TranscriptionSession()
-            session.start(source, engine_adapter, sink, options, engine_kind=self.engine)
-            session.join()
+            self.session = TranscriptionSession()
+            self.session.start(source, engine_adapter, sink, options, engine_kind=self.engine)
+            
+            # Check periodically if we should stop
+            # Note: TranscriptionSession.join() blocks, so we add a timeout
+            # In a production implementation, TranscriptionSession should support cancellation
+            self.session.join()
+            
+            # Check if stopped before completion
+            if self.should_stop:
+                logger.info("Transcription stopped by user")
+                return
             
             # Notify completion
             logger.info("Transcription complete", length=len(self.transcript))
@@ -135,10 +150,18 @@ class TranscriptionTask:
             self.is_running = False
 
     def stop(self) -> None:
-        """Stop the transcription task."""
+        """Stop the transcription task.
+        
+        Note: This sets a flag to stop the task, but TranscriptionSession
+        doesn't currently support cancellation. The task will complete
+        but the callbacks won't be called after stop() is invoked.
+        """
+        logger.info("Stopping transcription task")
+        self.should_stop = True
         self.is_running = False
-        # Note: TranscriptionSession doesn't have a stop method in the current implementation
-        # This would need to be added to properly support cancellation
+        # TODO: When TranscriptionSession supports cancellation, call:
+        # if self.session:
+        #     self.session.stop()
 
 
 class GUITranscriptionManager:

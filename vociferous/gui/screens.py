@@ -445,7 +445,10 @@ class SettingsScreen(Screen):
             engine: Selected engine name
         """
         logger.info("Engine selected", engine=engine)
-        self.config.engine = engine  # type: ignore
+        # Validate engine is a valid EngineKind
+        valid_engines = {"whisper_turbo", "voxtral_local", "whisper_vllm", "voxtral_vllm"}
+        if engine in valid_engines:
+            self.config.engine = engine  # type: ignore[assignment]
         self.engine_item.secondary_text = f"Current: {engine}"
         if hasattr(self, "engine_menu"):
             self.engine_menu.dismiss()

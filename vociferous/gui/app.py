@@ -42,11 +42,11 @@ class LuciferousApp(MDApp):
         self.screen_manager: ScreenManager | None = None
         self.nav_drawer: MDNavigationDrawer | None = None
 
-    def build(self) -> MDNavigationLayout:
+    def build(self) -> MDNavigationLayout | ScreenManager:
         """Build the application UI.
         
         Returns:
-            The root widget.
+            The root widget (navigation layout or screen manager for splash).
         """
         logger.info("Building Luciferous application")
         

@@ -185,9 +185,25 @@ class SplashScreen(Screen):
         self.progress_bar.opacity = 1
         self.status_label.text = f"[size=14]Installing {mode.value.upper()} dependencies...[/size]"
         
-        # Start installation (in real implementation, this should be async)
-        success = self.installer.install_dependencies(mode)
+        # Start installation in background thread
+        from kivy.clock import Clock
+        import threading
         
+        def install_thread():
+            """Run installation in background."""
+            success = self.installer.install_dependencies(mode)
+            # Schedule UI update on main thread
+            Clock.schedule_once(lambda dt: self._on_installation_complete(success), 0)
+        
+        thread = threading.Thread(target=install_thread, daemon=True)
+        thread.start()
+
+    def _on_installation_complete(self, success: bool) -> None:
+        """Handle installation completion (called on main thread).
+        
+        Args:
+            success: Whether installation succeeded
+        """
         if success:
             self.status_label.text = "[size=14][color=#00FF00]Installation complete![/color][/size]"
             self._mark_setup_complete()
