@@ -35,6 +35,12 @@ logger = structlog.get_logger(__name__)
 
 class HomeScreen(Screen):
     """Main home screen for transcription."""
+    
+    # Status color constants (aligned with theme)
+    COLOR_SUCCESS = "4CAF50"  # Material Green
+    COLOR_WARNING = "FF9800"  # Material Orange
+    COLOR_ERROR = "F44336"    # Material Red
+    COLOR_INFO = "2196F3"     # Material Blue
 
     def __init__(self, **kwargs):
         """Initialize the home screen."""
@@ -52,8 +58,8 @@ class HomeScreen(Screen):
             orientation="vertical",
             padding=20,
             size_hint=(1, None),
-            height=150,
-            elevation=5,
+            height=120,
+            elevation=3,
         )
         
         title_label = MDLabel(
@@ -69,9 +75,9 @@ class HomeScreen(Screen):
         file_card = MDCard(
             orientation="vertical",
             padding=20,
-            spacing=15,
+            spacing=10,
             size_hint=(1, 0.6),
-            elevation=5,
+            elevation=3,
         )
         
         file_label = MDLabel(
@@ -95,7 +101,7 @@ class HomeScreen(Screen):
         # Buttons
         button_layout = MDBoxLayout(
             orientation="horizontal",
-            spacing=15,
+            spacing=10,
             size_hint=(1, None),
             height=60,
         )
@@ -103,7 +109,6 @@ class HomeScreen(Screen):
         browse_button = MDRaisedButton(
             text="Browse Files",
             size_hint=(0.5, 1),
-            md_bg_color=(0.2, 0.4, 0.8, 1),
             on_release=self._browse_files,
         )
         button_layout.add_widget(browse_button)
@@ -111,7 +116,6 @@ class HomeScreen(Screen):
         self.transcribe_button = MDRaisedButton(
             text="Start Transcription",
             size_hint=(0.5, 1),
-            md_bg_color=(0.1, 0.6, 0.3, 1),
             disabled=True,
             on_release=self._start_transcription,
         )
@@ -192,9 +196,9 @@ class HomeScreen(Screen):
                 self.selected_file = selected
                 self.file_path_field.text = str(selected)
                 self.transcribe_button.disabled = False
-                self.status_label.text = "[color=#00FF00]✓ File ready[/color]"
+                self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]✓ File ready[/color]"
             else:
-                self.status_label.text = "[color=#FF9900]⚠ Not a supported audio format[/color]"
+                self.status_label.text = f"[color=#{self.COLOR_WARNING}]⚠ Not a supported audio format[/color]"
         
         self._exit_file_manager()
 
@@ -207,7 +211,7 @@ class HomeScreen(Screen):
         
         # Disable button during transcription
         self.transcribe_button.disabled = True
-        self.status_label.text = "[color=#4A9EFF]⏳ Transcribing...[/color]"
+        self.status_label.text = f"[color=#{self.COLOR_INFO}]⏳ Transcribing...[/color]"
         self.output_field.text = ""
         
         # Load config for engine selection
@@ -239,7 +243,7 @@ class HomeScreen(Screen):
         """
         logger.info("Transcription complete")
         self.output_field.text = text
-        self.status_label.text = "[color=#00FF00]✓ Complete![/color]"
+        self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]✓ Complete![/color]"
         self.transcribe_button.disabled = False
 
     def _on_transcription_error(self, error: str) -> None:
@@ -249,7 +253,7 @@ class HomeScreen(Screen):
             error: Error message
         """
         logger.error("Transcription error", error=error)
-        self.status_label.text = f"[color=#FF0000]✗ Error: {error}[/color]"
+        self.status_label.text = f"[color=#{self.COLOR_ERROR}]✗ Error: {error}[/color]"
         self.transcribe_button.disabled = False
 
 
@@ -395,7 +399,6 @@ class SettingsScreen(Screen):
             text="Save Settings",
             size_hint=(1, None),
             height=60,
-            md_bg_color=(0.1, 0.6, 0.3, 1),
             pos_hint={"center_x": 0.5},
             on_release=self._save_settings,
         )
@@ -415,7 +418,7 @@ class SettingsScreen(Screen):
             Styled header label
         """
         return MDLabel(
-            text=f"[size=20][b][color=#4A9EFF]{text}[/color][/b][/size]",
+            text=f"[size=20][b]{text}[/b][/size]",
             markup=True,
             size_hint_y=None,
             height=50,

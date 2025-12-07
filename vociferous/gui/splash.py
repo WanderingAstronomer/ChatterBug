@@ -21,6 +21,10 @@ logger = structlog.get_logger(__name__)
 
 class SplashScreen(Screen):
     """First-run splash screen with dependency selection."""
+    
+    # Status color constants (aligned with Material Design)
+    COLOR_SUCCESS = "4CAF50"  # Material Green
+    COLOR_ERROR = "F44336"    # Material Red
 
     def __init__(self, on_complete: Callable[[InstallMode | None], None], **kwargs):
         """Initialize the splash screen.
@@ -67,7 +71,7 @@ class SplashScreen(Screen):
             size_hint=(0.8, None),
             height=500,
             pos_hint={"center_x": 0.5, "center_y": 0.5},
-            elevation=10,
+            elevation=5,
         )
         
         # Welcome message
@@ -95,7 +99,7 @@ class SplashScreen(Screen):
             # Installation buttons
             button_layout = BoxLayout(
                 orientation="vertical",
-                spacing=15,
+                spacing=10,
                 size_hint_y=None,
                 height=200,
                 padding=[40, 0],
@@ -105,7 +109,6 @@ class SplashScreen(Screen):
                 text="GPU (NVIDIA CUDA)",
                 size_hint=(1, None),
                 height=60,
-                md_bg_color=(0.2, 0.4, 0.8, 1),
                 on_release=lambda x: self._on_mode_selected(InstallMode.GPU)
             )
             button_layout.add_widget(gpu_button)
@@ -114,7 +117,6 @@ class SplashScreen(Screen):
                 text="CPU Only",
                 size_hint=(1, None),
                 height=60,
-                md_bg_color=(0.2, 0.4, 0.8, 1),
                 on_release=lambda x: self._on_mode_selected(InstallMode.CPU)
             )
             button_layout.add_widget(cpu_button)
@@ -123,7 +125,6 @@ class SplashScreen(Screen):
                 text="Both (Flexible)",
                 size_hint=(1, None),
                 height=60,
-                md_bg_color=(0.2, 0.4, 0.8, 1),
                 on_release=lambda x: self._on_mode_selected(InstallMode.BOTH)
             )
             button_layout.add_widget(both_button)
@@ -164,7 +165,6 @@ class SplashScreen(Screen):
                 size_hint=(None, None),
                 size=(200, 60),
                 pos_hint={"center_x": 0.5},
-                md_bg_color=(0.2, 0.4, 0.8, 1),
                 on_release=lambda x: self._skip_setup()
             )
             card.add_widget(continue_button)
@@ -205,13 +205,13 @@ class SplashScreen(Screen):
             success: Whether installation succeeded
         """
         if success:
-            self.status_label.text = "[size=14][color=#00FF00]Installation complete![/color][/size]"
+            self.status_label.text = f"[size=14][color=#{self.COLOR_SUCCESS}]Installation complete![/color][/size]"
             self._mark_setup_complete()
             # Delay before continuing
             from kivy.clock import Clock
             Clock.schedule_once(lambda dt: self._complete_setup(), 1.5)
         else:
-            self.status_label.text = "[size=14][color=#FF0000]Installation failed. Please try again.[/color][/size]"
+            self.status_label.text = f"[size=14][color=#{self.COLOR_ERROR}]Installation failed. Please try again.[/color][/size]"
             self.progress_bar.opacity = 0
 
     def _skip_setup(self) -> None:

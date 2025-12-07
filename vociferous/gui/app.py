@@ -105,12 +105,10 @@ class VociferousGUIApp(MDApp):
         # Content layout with toolbar
         content_layout = MDBoxLayout(orientation="vertical")
         
-        # Top app bar with bright blue
+        # Top app bar
         toolbar = MDTopAppBar(
             title="Vociferous",
             left_action_items=[["menu", lambda x: self._toggle_nav_drawer()]],
-            md_bg_color=(0.1, 0.3, 0.7, 1),  # Bright blue
-            specific_text_color=(1, 1, 1, 1),  # White text
         )
         content_layout.add_widget(toolbar)
         
@@ -119,7 +117,7 @@ class VociferousGUIApp(MDApp):
         
         # Navigation drawer
         self.nav_drawer = MDNavigationDrawer()
-        nav_drawer_content = MDBoxLayout(orientation="vertical", padding=10, spacing=10)
+        nav_drawer_content = MDBoxLayout(orientation="vertical", padding=20, spacing=10)
         
         # Navigation items
         nav_items = [
@@ -129,10 +127,10 @@ class VociferousGUIApp(MDApp):
         
         for icon, text in nav_items:
             item = OneLineIconListItem(
-                IconLeftWidget(icon=icon),
                 text=text,
                 on_release=lambda x, name=text.lower(): self._navigate_to(name)
             )
+            item.add_widget(IconLeftWidget(icon=icon))
             nav_drawer_content.add_widget(item)
         
         self.nav_drawer.add_widget(nav_drawer_content)
