@@ -7,7 +7,7 @@ from typing import Any
 
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.filechooser import FileChooserListView
+from kivy.uix.popup import Popup
 from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.textfield import MDTextField
@@ -22,11 +22,13 @@ from kivymd.uix.list import (
 )
 from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox
 from kivymd.uix.menu import MDDropdownMenu
+from kivymd.uix.filemanager import MDFileManager
 
 import structlog
 
-from vociferous.config import load_config, AppConfig
+from vociferous.config import load_config, save_config, AppConfig
 from vociferous.domain.model import EngineKind
+from .transcription import GUITranscriptionManager
 
 logger = structlog.get_logger(__name__)
 
@@ -37,6 +39,8 @@ class HomeScreen(Screen):
     def __init__(self, **kwargs):
         """Initialize the home screen."""
         super().__init__(**kwargs)
+        self.transcription_manager = GUITranscriptionManager()
+        self.file_manager: MDFileManager | None = None
         self._build_ui()
 
     def _build_ui(self) -> None:
@@ -115,6 +119,15 @@ class HomeScreen(Screen):
         
         file_card.add_widget(button_layout)
         
+        # Status label
+        self.status_label = MDLabel(
+            text="",
+            markup=True,
+            size_hint_y=None,
+            height=30,
+        )
+        file_card.add_widget(self.status_label)
+        
         # Output preview
         output_label = MDLabel(
             text="[b]Transcript Output[/b]",
@@ -141,12 +154,49 @@ class HomeScreen(Screen):
 
     def _browse_files(self, *args: Any) -> None:
         """Open file browser for audio file selection."""
-        logger.info("Browse files clicked")
-        # In a real implementation, would open a file dialog
-        # For now, just set a placeholder
-        self.file_path_field.text = "/path/to/audio/file.wav"
-        self.selected_file = Path("/path/to/audio/file.wav")
-        self.transcribe_button.disabled = False
+        logger.info("Opening file browser")
+        
+        # Initialize file manager if not already done
+        if not self.file_manager:
+            self.file_manager = MDFileManager(
+                exit_manager=self._exit_file_manager,
+                select_path=self._select_file,
+            )
+        
+        # Show file manager
+        try:
+            self.file_manager.show(Path.home())
+        except Exception as e:
+            logger.error("Error showing file manager", error=str(e))
+            # Fallback: just set a demo file
+            self._select_file(str(Path.home() / "demo.wav"))
+
+    def _exit_file_manager(self, *args: Any) -> None:
+        """Close the file manager."""
+        if self.file_manager:
+            self.file_manager.close()
+
+    def _select_file(self, path: str) -> None:
+        """Handle file selection.
+        
+        Args:
+            path: Selected file path
+        """
+        logger.info("File selected", path=path)
+        selected = Path(path)
+        
+        # Check if it's a file and has a valid audio extension
+        if selected.is_file():
+            valid_extensions = {'.wav', '.mp3', '.flac', '.m4a', '.ogg', '.opus', '.aac', '.wma'}
+            if selected.suffix.lower() in valid_extensions:
+                self.selected_file = selected
+                self.file_path_field.text = str(selected)
+                self.transcribe_button.disabled = False
+                self.status_label.text = "[color=#00FF00]✓ File ready[/color]"
+            else:
+                self.status_label.text = "[color=#FF9900]⚠ Not a supported audio format[/color]"
+        
+        self._exit_file_manager()
 
     def _start_transcription(self, *args: Any) -> None:
         """Start the transcription process."""
@@ -154,10 +204,53 @@ class HomeScreen(Screen):
             return
         
         logger.info("Starting transcription", file=str(self.selected_file))
-        self.output_field.text = "Transcription in progress...\n\n"
-        # In a real implementation, would call TranscriptionSession
-        # For demonstration:
-        self.output_field.text += "This is where the transcript would appear."
+        
+        # Disable button during transcription
+        self.transcribe_button.disabled = True
+        self.status_label.text = "[color=#4A9EFF]⏳ Transcribing...[/color]"
+        self.output_field.text = ""
+        
+        # Load config for engine selection
+        config = load_config()
+        
+        # Start transcription
+        self.transcription_manager.transcribe(
+            file_path=self.selected_file,
+            engine=config.engine,
+            language="en",
+            on_progress=self._on_transcription_progress,
+            on_complete=self._on_transcription_complete,
+            on_error=self._on_transcription_error,
+        )
+
+    def _on_transcription_progress(self, text: str) -> None:
+        """Handle transcription progress updates.
+        
+        Args:
+            text: Current transcript text
+        """
+        self.output_field.text = text
+
+    def _on_transcription_complete(self, text: str) -> None:
+        """Handle transcription completion.
+        
+        Args:
+            text: Final transcript text
+        """
+        logger.info("Transcription complete")
+        self.output_field.text = text
+        self.status_label.text = "[color=#00FF00]✓ Complete![/color]"
+        self.transcribe_button.disabled = False
+
+    def _on_transcription_error(self, error: str) -> None:
+        """Handle transcription error.
+        
+        Args:
+            error: Error message
+        """
+        logger.error("Transcription error", error=error)
+        self.status_label.text = f"[color=#FF0000]✗ Error: {error}[/color]"
+        self.transcribe_button.disabled = False
 
 
 class SettingsScreen(Screen):
@@ -389,6 +482,9 @@ class SettingsScreen(Screen):
     def _save_settings(self, *args: Any) -> None:
         """Save settings to config file."""
         logger.info("Saving settings")
-        # In a real implementation, would save to config file
-        # For now, just log
-        logger.info("Settings saved", config=self.config)
+        try:
+            save_config(self.config)
+            logger.info("Settings saved successfully")
+            # Could add a toast/snackbar notification here
+        except Exception as e:
+            logger.error("Failed to save settings", error=str(e))

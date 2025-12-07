@@ -114,3 +114,25 @@ def load_config(config_path: Path | None = None) -> AppConfig:
         Path(cfg.model_cache_dir).expanduser().mkdir(parents=True, exist_ok=True)
 
     return cfg
+
+
+def save_config(config: AppConfig, config_path: Path | None = None) -> None:
+    """Save configuration to TOML file.
+    
+    Args:
+        config: Configuration to save
+        config_path: Path to config file (default: ~/.config/vociferous/config.toml)
+    """
+    if config_path is None:
+        config_path = Path.home() / ".config" / "vociferous" / "config.toml"
+    
+    # Ensure config directory exists
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Convert config to dict
+    config_dict = config.model_dump(exclude_none=True)
+    
+    # Write to TOML file
+    import tomli_w
+    with open(config_path, "wb") as f:
+        tomli_w.dump(config_dict, f)

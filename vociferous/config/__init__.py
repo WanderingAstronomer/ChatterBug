@@ -1,5 +1,5 @@
 """Config loading and validation."""
 
-from .schema import AppConfig, load_config  # noqa: F401
+from .schema import AppConfig, load_config, save_config  # noqa: F401
 
-__all__ = ["AppConfig", "load_config"]
+__all__ = ["AppConfig", "load_config", "save_config"]
