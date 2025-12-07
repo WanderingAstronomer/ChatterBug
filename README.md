@@ -13,6 +13,7 @@ Local-first ASR with faster-whisper (CTranslate2) as the default engine and opti
 - Base install (includes OpenAI client, faster-whisper, transformers): `pip install -e .`
 - Optional extras:
 	- `pip install -e .[polish]` for grammar/fluency polishing (llama.cpp + HF hub download)
+	- `pip install -e .[gui]` for the Luciferous GUI (KivyMD-based graphical interface)
 	- `pip install -e .[dev]` for tests, typing, and linting tools
 
 ## Engines and presets
@@ -33,6 +34,7 @@ Local-first ASR with faster-whisper (CTranslate2) as the default engine and opti
 
 ## CLI Usage
 - `vociferous transcribe <file>` - Transcribe audio file to stdout.
+- `luciferous` - Launch the graphical user interface (requires `[gui]` extra).
 - `--engine whisper_vllm|voxtral_vllm|whisper_turbo|voxtral_local` - Select engine.
 - `--preset high_accuracy|balanced|fast` (balanced default for vLLM engines); `--fast` shortcut for `preset=fast`.
 - `--vllm-endpoint http://host:port` - Target vLLM server for vLLM engines.

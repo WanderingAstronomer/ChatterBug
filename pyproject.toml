@@ -20,14 +20,21 @@ dependencies = [
   "sounddevice>=0.4.6",
   "pyperclip>=1.8.2",
   "openai>=1.0.0",
+  "tomli-w>=1.0.0",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0.0", "mypy>=1.10.0"]
 polish = ["llama-cpp-python>=0.3.0", "huggingface_hub>=0.23.0"]
+gui = [
+  "kivymd>=1.2.0",
+  "kivy>=2.3.0",
+  "pillow>=10.0.0",
+]
 
 [project.scripts]
 vociferous = "vociferous.cli.main:main"
+luciferous = "vociferous.gui.app:run_gui"
 
 [tool.setuptools]
 packages = ["vociferous"]
@@ -36,7 +43,7 @@ packages = ["vociferous"]
 python_version = "3.11"
 strict = true
 explicit_package_bases = true
-exclude = ".*(vociferous/tui/|vociferous/polish/).*"
+exclude = ".*(vociferous/tui/|vociferous/polish/|vociferous/gui/).*"
 
 [[tool.mypy.overrides]]
 module = [
@@ -48,6 +55,7 @@ module = [
   "vociferous.audio.vad",
   "vociferous.engines.hardware",
   "vociferous.polish.*",
+  "vociferous.gui.*",
 ]
 ignore_errors = true
 
