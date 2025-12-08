@@ -357,7 +357,7 @@ def languages() -> None:
     
     # Split languages into 3 columns for compact display
     sorted_langs = sorted(WHISPER_LANGUAGES.items())
-    chunk_size = (len(sorted_langs) + 2) // 3  # Round up division
+    chunk_size = (len(sorted_langs) + 2) // 3  # Calculate chunk size for 3-column layout
     
     for i in range(chunk_size):
         row = []
@@ -381,8 +381,9 @@ def languages() -> None:
     voxtral_table.add_column("Code", style="cyan", width=6)
     voxtral_table.add_column("Language", style="white")
     
+    # All Voxtral core languages are guaranteed to be in WHISPER_LANGUAGES
     for code in VOXTRAL_CORE_LANGUAGES:
-        voxtral_table.add_row(code, WHISPER_LANGUAGES.get(code, "Unknown"))
+        voxtral_table.add_row(code, WHISPER_LANGUAGES[code])
     
     console.print()
     console.print(voxtral_table)
