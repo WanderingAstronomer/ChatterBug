@@ -142,6 +142,70 @@ class TestCheckCommand:
 
 
 # ============================================================================
+# LANGUAGES Command Tests
+# ============================================================================
+
+
+class TestLanguagesCommand:
+    """Tests for the languages command."""
+
+    def test_languages_command_success(self) -> None:
+        """Test that languages command runs successfully."""
+        result = CliRunner().invoke(app, ["languages"])
+        
+        assert result.exit_code == 0
+        assert "Whisper" in result.stdout
+        assert "Voxtral" in result.stdout
+
+    def test_languages_displays_whisper_languages(self) -> None:
+        """Test that Whisper languages are displayed."""
+        result = CliRunner().invoke(app, ["languages"])
+        
+        assert result.exit_code == 0
+        # Check for some common languages
+        assert "en" in result.stdout
+        assert "English" in result.stdout
+        assert "es" in result.stdout
+        assert "Spanish" in result.stdout
+        assert "fr" in result.stdout
+        assert "French" in result.stdout
+        assert "zh" in result.stdout
+        assert "Chinese" in result.stdout
+
+    def test_languages_displays_voxtral_core(self) -> None:
+        """Test that Voxtral core languages are displayed."""
+        result = CliRunner().invoke(app, ["languages"])
+        
+        assert result.exit_code == 0
+        # Check for Voxtral core languages
+        assert "Voxtral" in result.stdout
+        assert "Core Languages" in result.stdout or "core" in result.stdout.lower()
+        # At least some of the core languages should be there
+        output_lower = result.stdout.lower()
+        assert "english" in output_lower
+        assert "spanish" in output_lower
+        assert "french" in output_lower
+
+    def test_languages_displays_usage_examples(self) -> None:
+        """Test that usage examples are displayed."""
+        result = CliRunner().invoke(app, ["languages"])
+        
+        assert result.exit_code == 0
+        assert "Usage" in result.stdout or "usage" in result.stdout.lower()
+        assert "vociferous transcribe" in result.stdout
+        assert "-l" in result.stdout or "--language" in result.stdout
+        assert "auto" in result.stdout
+
+    def test_languages_shows_total_count(self) -> None:
+        """Test that total language count is displayed."""
+        result = CliRunner().invoke(app, ["languages"])
+        
+        assert result.exit_code == 0
+        # Should show total count for Whisper (99 or 100 languages)
+        assert "Total" in result.stdout or "total" in result.stdout.lower()
+
+
+# ============================================================================
 # CHECK_VLLM Command Tests
 # ============================================================================
 
