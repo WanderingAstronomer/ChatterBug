@@ -88,7 +88,7 @@ def test_cli_transcribe_defaults(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     audio = tmp_path / "a.wav"
     audio.write_bytes(b"data")
 
-    result = CliRunner().invoke(app, ["transcribe", str(audio)])
+    result = CliRunner().invoke(app, ["transcribe", str(audio), "--polish"])
 
     assert result.exit_code == 0
     cfg = calls["engine_config"]
@@ -278,7 +278,7 @@ def test_cli_transcribe_configuration_error_exit_code(tmp_path: Path, monkeypatc
 
     monkeypatch.setattr("vociferous.cli.main.build_polisher", failing_build_polisher)
 
-    result = CliRunner().invoke(app, ["transcribe", str(audio)])
+    result = CliRunner().invoke(app, ["transcribe", str(audio), "--polish"])
 
     assert result.exit_code == 2
 
@@ -326,3 +326,71 @@ def test_cli_transcribe_all_flags_together(tmp_path: Path, monkeypatch: pytest.M
     options = calls["start_args"][3]
     assert options.language == "es"
     assert options.preset == "high_accuracy"
+
+
+def test_cli_transcribe_skips_polisher_by_default(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    def failing_polisher(cfg: Any) -> object:
+        calls["polisher_called"] = cfg
+        raise AssertionError("polisher should not be built when disabled")
+
+    monkeypatch.setattr("vociferous.cli.main.build_polisher", failing_polisher)
+    monkeypatch.setattr(
+        "vociferous.cli.main.PolishingSink",
+        lambda inner, polisher: (_ for _ in ()).throw(AssertionError("polisher sink should not be used")),
+    )
+
+    result = CliRunner().invoke(app, ["transcribe", str(audio)])
+
+    assert result.exit_code == 0
+    assert "polisher_called" not in calls
+
+
+def test_cli_transcribe_polish_flag_wraps_sink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    def fake_polisher(cfg: Any) -> object:
+        calls["polisher_config"] = cfg
+        return "POLISHER"
+
+    def fake_polishing_sink(inner: Any, polisher: Any) -> str:
+        calls["polishing_sink_args"] = (inner, polisher)
+        return "WRAPPED_SINK"
+
+    monkeypatch.setattr("vociferous.cli.main.build_polisher", fake_polisher)
+    monkeypatch.setattr("vociferous.cli.main.PolishingSink", fake_polishing_sink)
+
+    result = CliRunner().invoke(app, ["transcribe", str(audio), "--polish"])
+
+    assert result.exit_code == 0
+    assert calls["polisher_config"].enabled is True
+    assert calls["polishing_sink_args"][1] == "POLISHER"
+    assert calls["start_args"][2] == "WRAPPED_SINK"
+
+
+def test_cli_transcribe_no_polish_overrides_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    config = _FakeConfig()
+    config.polish_enabled = True
+    calls = _setup_cli_fixtures(monkeypatch, config=config)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    def failing_polisher(cfg: Any) -> object:
+        calls["polisher_called"] = cfg
+        raise AssertionError("polisher should be skipped when --no-polish is set")
+
+    monkeypatch.setattr("vociferous.cli.main.build_polisher", failing_polisher)
+    monkeypatch.setattr(
+        "vociferous.cli.main.PolishingSink",
+        lambda inner, polisher: (_ for _ in ()).throw(AssertionError("polisher sink should not be used")),
+    )
+
+    result = CliRunner().invoke(app, ["transcribe", str(audio), "--no-polish"])
+
+    assert result.exit_code == 0
+    assert "polisher_called" not in calls

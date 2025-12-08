@@ -167,6 +167,7 @@ def build_transcribe_configs_from_cli(
     engine: EngineKind,
     language: str,
     preset: TranscriptionPreset | None,
+    polish: bool | None,
 ) -> TranscribeConfigBundle:
     """Build transcription configs from CLI user-facing options only.
     
@@ -224,8 +225,10 @@ def build_transcribe_configs_from_cli(
     )
 
     # Polisher config from AppConfig only
+    polisher_enabled = app_config.polish_enabled if polish is None else polish
+
     polisher_config = build_polisher_config(
-        enabled=app_config.polish_enabled,
+        enabled=polisher_enabled,
         model=app_config.polish_model,
         base_params=app_config.polish_params,
         max_tokens=int(app_config.polish_params.get("max_tokens", "128")),

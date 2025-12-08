@@ -159,6 +159,13 @@ def transcribe(
         case_sensitive=False,
         show_default=False,
     ),
+    polish: bool | None = typer.Option(
+        None,
+        "--polish/--no-polish",
+        rich_help_panel="Core Options",
+        help="Post-process final transcript text (enable to polish, disable to skip even if enabled in config).",
+        show_default=False,
+    ),
 ) -> None:
     """Transcribe an audio file to text using local ASR engines.
 
@@ -180,6 +187,7 @@ def transcribe(
       Edit ~/.config/vociferous/config.toml for:
                 - Model selection, device (CPU/GPU), compute precision
                 - Batching, VAD, chunk sizes, polish settings
+                                - Toggle polishing per run with --polish / --no-polish
         
     SEE ALSO:
       vociferous languages  - List supported language codes
@@ -194,6 +202,7 @@ def transcribe(
         engine=engine,
         language=language,
         preset=preset,
+        polish=polish,
     )
     
     # Apply numexpr thread limit if configured
@@ -202,9 +211,11 @@ def transcribe(
         os.environ["NUMEXPR_MAX_THREADS"] = str(bundle.numexpr_threads)
 
     # Build engine and polisher
+    polisher = None
     try:
         engine_adapter = build_engine(engine, bundle.engine_config)
-        polisher = build_polisher(bundle.polisher_config)
+        if bundle.polisher_config.enabled:
+            polisher = build_polisher(bundle.polisher_config)
     except (DependencyError, EngineError) as exc:
         typer.echo(f"Engine initialization error: {exc}", err=True)
         raise typer.Exit(code=3) from exc
