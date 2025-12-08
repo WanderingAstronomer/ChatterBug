@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field, field_validator
 
 from vociferous.domain.model import DEFAULT_MODEL_CACHE_DIR, DEFAULT_WHISPER_MODEL, EngineKind
 from vociferous.domain.exceptions import ConfigurationError
+from vociferous.config.migrations import migrate_raw_config
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +22,7 @@ class AppConfig(BaseModel):
     compute_type: str = "auto"
     device: str = "auto"
     model_cache_dir: str | None = str(DEFAULT_MODEL_CACHE_DIR)
+    model_parent_dir: str | None = str(DEFAULT_MODEL_CACHE_DIR)
     vllm_endpoint: str = "http://localhost:8000"  # Default vLLM server endpoint
     allow_local_fallback: bool = False  # Explicit opt-in for auto-fallback to local engines
     chunk_ms: int = 960
@@ -54,6 +56,13 @@ class AppConfig(BaseModel):
             raise ValueError("Invalid compute_type")
         return v
 
+    @field_validator("model_parent_dir")
+    @classmethod
+    def validate_model_parent_dir(cls, v: str | None) -> str:
+        if not v:
+            raise ValueError("model_parent_dir must be set")
+        return str(Path(v).expanduser())
+
     @field_validator("chunk_ms")
     @classmethod
     def validate_chunk_ms(cls, v: int) -> int:
@@ -79,37 +88,30 @@ def load_config(config_path: Path | None = None) -> AppConfig:
     if config_path is None:
         config_path = Path.home() / ".config" / "vociferous" / "config.toml"
 
+    import sys
     if not config_path.exists():
         cfg = AppConfig()
     else:
         with open(config_path, "rb") as f:
             data = tomllib.load(f)
 
-        # Migrate deprecated engines before validation
-        if "engine" in data:
-            engine = data["engine"]
+        migrated = migrate_raw_config(data)
+        cfg = AppConfig.model_validate(migrated)
 
-            # Migrate parakeet_rnnt -> whisper_vllm
-            if engine == "parakeet_rnnt":
-                logger.warning(
-                    "⚠ Parakeet engine removed; migrated to whisper_vllm with large-v3-turbo "
-                    "(comparable accuracy). Update ~/.config/vociferous/config.toml."
-                )
-                data["engine"] = "whisper_vllm"
-                # Use large-v3-turbo as Parakeet replacement (RNNT-class accuracy)
-                if "model_name" not in data or data["model_name"] == DEFAULT_WHISPER_MODEL:
-                    data["model_name"] = "openai/whisper-large-v3-turbo"
+    # Prompt for model_parent_dir if missing or empty
+    if not cfg.model_parent_dir or not str(cfg.model_parent_dir).strip():
+        default_dir = str(DEFAULT_MODEL_CACHE_DIR)
+        print(f"\nVociferous: Please select a parent directory for your models.")
+        print(f"Default: {default_dir}")
+        user_input = input(f"Enter model parent directory (or press Enter to use default): ").strip()
+        chosen_dir = user_input if user_input else default_dir
+        cfg.model_parent_dir = str(Path(chosen_dir).expanduser())
+        # Save updated config
+        save_config(cfg, config_path)
 
-            # Migrate voxtral -> voxtral_local (backward compat)
-            elif engine == "voxtral":
-                logger.warning(
-                    "⚠ Engine 'voxtral' renamed to 'voxtral_local'. "
-                    "Update config; existing behavior unchanged."
-                )
-                data["engine"] = "voxtral_local"
-
-        cfg = AppConfig.model_validate(data)
-
+    # Ensure model parent directory exists
+    if cfg.model_parent_dir:
+        Path(cfg.model_parent_dir).expanduser().mkdir(parents=True, exist_ok=True)
     # Ensure model cache directory exists if provided
     if cfg.model_cache_dir:
         Path(cfg.model_cache_dir).expanduser().mkdir(parents=True, exist_ok=True)

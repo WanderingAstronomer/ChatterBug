@@ -15,6 +15,7 @@ from vociferous.domain.model import (
 from vociferous.domain.exceptions import DependencyError, EngineError
 from vociferous.engines.model_registry import normalize_model_name
 from vociferous.engines.hardware import get_optimal_device, get_optimal_compute_type
+from vociferous.engines.cache_manager import configure_hf_cache
 
 
 class VoxtralLocalEngine(TranscriptionEngine):
@@ -49,21 +50,23 @@ class VoxtralLocalEngine(TranscriptionEngine):
             import torch
         except ImportError as exc:  # pragma: no cover - optional dependency guard
             raise RuntimeError(
-                "transformers and torch are required for VoxtralEngine; install with voxtral extra"
+                "transformers and torch are required for VoxtralEngine; install with vociferous[voxtral]"
             ) from exc
 
         if self.device == "cuda" and not torch.cuda.is_available():
             raise EngineError("CUDA requested for Voxtral but no GPU is available")
 
-        self._processor = AutoProcessor.from_pretrained(
-            self.model_name, cache_dir=str(self.cache_dir)
-        )
-        dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
-        self._model = VoxtralForConditionalGeneration.from_pretrained(
-            self.model_name,
-            dtype=dtype,
-            cache_dir=str(self.cache_dir),
-        ).to(self.device)
+        # Use cache manager to prevent duplicate downloads to ~/.cache/huggingface/hub
+        with configure_hf_cache(self.cache_dir):
+            self._processor = AutoProcessor.from_pretrained(
+                self.model_name, cache_dir=str(self.cache_dir)
+            )
+            dtype = torch.bfloat16 if self.device == "cuda" else torch.float32
+            self._model = VoxtralForConditionalGeneration.from_pretrained(
+                self.model_name,
+                dtype=dtype,
+                cache_dir=str(self.cache_dir),
+            ).to(self.device)
 
     def start(self, options: TranscriptionOptions) -> None:
         self._options = options

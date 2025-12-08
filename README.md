@@ -33,10 +33,11 @@ Local-first ASR with faster-whisper (CTranslate2) as the default engine and opti
 - History: JSONL-backed history stored under `~/.cache/vociferous/history/history.jsonl`.
 
 ## CLI Usage
-- `vociferous transcribe <file>` - Transcribe audio file to stdout.
+- `vociferous transcribe <file>` - Transcribe audio file to stdout. Common flags: `-e`/`--engine`, `-l`/`--language`, `-o`/`--output`, `-p`/`--preset`.
+  - Example: `vociferous transcribe recording.wav -e voxtral_local -o transcript.txt`
 - `vociferous-gui` - Launch the graphical user interface (requires `[gui]` extra).
-- `--engine whisper_vllm|voxtral_vllm|whisper_turbo|voxtral_local` - Select engine.
-- `--preset high_accuracy|balanced|fast` (balanced default for vLLM engines); `--fast` shortcut for `preset=fast`.
+- `-e|--engine whisper_vllm|voxtral_vllm|whisper_turbo|voxtral_local` - Select engine.
+- `-p|--preset high_accuracy|balanced|fast` (balanced default for vLLM engines); `--fast` shortcut for `preset=fast`.
 - `--vllm-endpoint http://host:port` - Target vLLM server for vLLM engines.
 - Whisper controls: `--enable-batching/--batch-size`, `--beam-size`, `--vad-filter/--no-vad-filter`, `--word-timestamps`, `--whisper-temperature`.
 - Voxtral controls: `--prompt`, `--max-new-tokens`, `--gen-temperature`.

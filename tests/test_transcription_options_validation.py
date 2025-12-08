@@ -47,6 +47,26 @@ def test_transcription_options_validates_temperature() -> None:
     assert opts.temperature == 1.0
 
 
+def test_transcription_options_validates_language() -> None:
+    """Test language validation accepts ISO 639-1 codes and 'auto'."""
+    # Valid cases
+    assert TranscriptionOptions(language="en").language == "en"
+    assert TranscriptionOptions(language="fr").language == "fr"
+    assert TranscriptionOptions(language="es").language == "es"
+    assert TranscriptionOptions(language="auto").language == "auto"
+    assert TranscriptionOptions(language="EN").language == "en"  # Case insensitive
+
+    # Invalid cases
+    with pytest.raises(ValueError, match="Invalid language code"):
+        TranscriptionOptions(language="eng")  # 3 letters
+    
+    with pytest.raises(ValueError, match="Invalid language code"):
+        TranscriptionOptions(language="12")   # Numbers
+    
+    with pytest.raises(ValueError, match="Invalid language code"):
+        TranscriptionOptions(language="")     # Empty
+
+
 def test_transcription_options_validates_max_duration() -> None:
     """Test max_duration_s validation rejects non-positive values."""
     with pytest.raises(ValueError, match="max_duration_s must be positive"):

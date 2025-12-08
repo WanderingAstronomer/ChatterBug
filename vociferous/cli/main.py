@@ -70,7 +70,7 @@ class BrightTyperGroup(TyperGroup):
         return formatter.getvalue()
 
 app = typer.Typer(
-    help="🐛 Vociferous - Local-first speech transcription",
+    help="Vociferous - Local-first speech transcription",
     cls=BrightTyperGroup,
     rich_markup_mode="rich",
     pretty_exceptions_show_locals=False,
@@ -80,13 +80,35 @@ cli_app = app  # alias for embedding
 
 @app.command(rich_help_panel="Core Commands")
 def transcribe(
-    file: Path = typer.Argument(..., help="Audio file to transcribe"),
-    engine: EngineKind = typer.Option("whisper_turbo", help="Engine: whisper_turbo (default), voxtral_local, whisper_vllm, voxtral_vllm"),
-    language: str = typer.Option("en", help="Language code (en, es, fr, etc.)"),
-    output: Path | None = typer.Option(None, help="Save transcript to file (default: stdout)"),
+    file: Path = typer.Argument(..., metavar="FILE", help="Audio file to transcribe"),
+    engine: EngineKind = typer.Option(
+        "whisper_turbo",
+        "--engine",
+        "-e",
+        rich_help_panel="Core Options",
+        help="Transcription engine to use. 'whisper_turbo' is fast and accurate. 'voxtral_local' uses Mistral for smart punctuation.",
+    ),
+    language: str = typer.Option(
+        "en",
+        "--language",
+        "-l",
+        rich_help_panel="Core Options",
+        help="Language code (ISO 639-1, e.g., 'en', 'es', 'fr') or 'auto' for detection.",
+    ),
+    output: Path | None = typer.Option(
+        None,
+        "--output",
+        "-o",
+        metavar="PATH",
+        rich_help_panel="Core Options",
+        help="Save transcript to file (default: stdout)",
+    ),
     preset: TranscriptionPreset | None = typer.Option(
         None,
-        help="Quality preset: fast, balanced, high_accuracy",
+        "--preset",
+        "-p",
+        rich_help_panel="Core Options",
+        help="Quality preset: 'fast' (speed), 'balanced' (default), 'high_accuracy' (best quality).",
         case_sensitive=False,
         show_default=False,
     ),
@@ -120,22 +142,19 @@ def transcribe(
     polish_temperature: float = typer.Option(0.2, help="Polisher temperature", hidden=True),
     polish_gpu_layers: int = typer.Option(0, help="Polisher GPU layers", hidden=True),
     polish_context_length: int = typer.Option(2048, help="Polisher context length", hidden=True),
-    ) -> None:
+) -> None:
     """Transcribe an audio file to text using local ASR engines.
 
     ENGINES:
       whisper_turbo - Fast, accurate, works offline (default)
       voxtral_local - Smart punctuation, Mistral-based
-      whisper_vllm  - Server-based (requires vLLM running)
-      voxtral_vllm  - Server-based smart mode
+      whisper_vllm  - Use vLLM server for Whisper
+      voxtral_vllm  - Use vLLM server for Voxtral
 
     EXAMPLES:
-      vociferous transcribe recording.wav
-      vociferous transcribe audio.mp3 --output transcript.txt
-      vociferous transcribe podcast.flac --engine voxtral_local
-      vociferous transcribe meeting.m4a --preset fast
-
-    Supports .wav, .mp3, .flac, .m4a, .ogg, .opus, and more via ffmpeg
+      vociferous transcribe audio.mp3
+      vociferous transcribe audio.wav --language fr --preset high_accuracy
+      vociferous transcribe audio.flac --engine voxtral_local --output transcript.txt
     """
     logging.basicConfig(level=logging.INFO)
     config = load_config()
@@ -267,6 +286,27 @@ def transcribe(
     # Validate file exists before showing banner
     if not file.exists():
         console.print(Panel(f"[red]File not found: {file}[/red]", title="❌ File Not Found", border_style="red"))
+        raise typer.Exit(code=2)
+
+    if file.is_dir():
+        console.print(
+            Panel(
+                f"[red]{file} is a directory, not an audio file.\n"
+                f"Example: vociferous transcribe {file / 'your_audio_file.wav'}",
+                title="❌ Directory, Not File",
+                border_style="red",
+            )
+        )
+        raise typer.Exit(code=2)
+
+    if output is not None and output.is_dir():
+        console.print(
+            Panel(
+                f"[red]{output} is a directory. Provide a filename (e.g., {output / 'transcript.txt'}).",
+                title="⚠️  Invalid Output",
+                border_style="yellow",
+            )
+        )
         raise typer.Exit(code=2)
 
     # Pretty startup banner

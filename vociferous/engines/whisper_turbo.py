@@ -21,40 +21,14 @@ from vociferous.domain.model import (
 from vociferous.domain.exceptions import DependencyError, EngineError
 from vociferous.engines.model_registry import normalize_model_name
 from vociferous.engines.hardware import get_optimal_device, get_optimal_compute_type
+from vociferous.engines.presets import (
+    WHISPER_TURBO_PRESETS,
+    get_preset_config,
+    resolve_preset_name,
+)
 from vociferous.audio.vad import VadWrapper, VadService
 
 logger = logging.getLogger(__name__)
-
-
-WHISPER_PRESETS: Mapping[str, dict[str, object]] = {
-    # Default: large-v3-turbo CT2, FP16 on CUDA, INT8 on CPU
-    "balanced": {
-        "model_name": DEFAULT_WHISPER_MODEL,
-        "precision": {"cuda": "float16", "cpu": "int8"},
-        "beam_size": 1,
-        "temperature": 0.0,
-        "window_sec": 25.0,
-        "hop_sec": 5.0,
-    },
-    # Accuracy-first: full large-v3, FP16 on CUDA
-    "accuracy": {
-        "model_name": "openai/whisper-large-v3",
-        "precision": {"cuda": "float16", "cpu": "int8"},
-        "beam_size": 2,
-        "temperature": 0.0,
-        "window_sec": 30.0,
-        "hop_sec": 5.0,
-    },
-    # Latency-first: turbo INT8/FP16 mix on CUDA
-    "low_latency": {
-        "model_name": DEFAULT_WHISPER_MODEL,
-        "precision": {"cuda": "int8_float16", "cpu": "int8"},
-        "beam_size": 1,
-        "temperature": 0.0,
-        "window_sec": 18.0,
-        "hop_sec": 4.0,
-    },
-}
 
 
 def _bool_param(params: Mapping[str, str], key: str, default: bool) -> bool:
@@ -73,18 +47,13 @@ class WhisperTurboEngine(TranscriptionEngine):
         self.config = config
         params = {k.lower(): v for k, v in (config.params or {}).items()}
 
-        raw_preset = params.get("preset") or params.get("profile") or ""
-        preset_explicit = bool(raw_preset.strip())
-        preset_name = raw_preset.replace("-", "_").strip().lower() or "balanced"
-        if preset_name not in WHISPER_PRESETS and preset_explicit:
-            preset_name = "custom"
-        elif preset_name not in WHISPER_PRESETS:
-            preset_name = "balanced"
+        raw_preset = params.get("preset") or params.get("profile")
+        preset_name, preset_explicit = resolve_preset_name(raw_preset, WHISPER_TURBO_PRESETS, default="balanced")
         self.preset = preset_name
 
-        preset_cfg = WHISPER_PRESETS.get(self.preset, WHISPER_PRESETS["balanced"])
+        preset_cfg = get_preset_config(self.preset, WHISPER_TURBO_PRESETS, "balanced")
         use_preset_model = (
-            (preset_explicit and self.preset in WHISPER_PRESETS)
+            (preset_explicit and self.preset in WHISPER_TURBO_PRESETS)
             or config.model_name == DEFAULT_WHISPER_MODEL
         )
         target_model = preset_cfg.get("model_name") if use_preset_model else config.model_name
@@ -151,7 +120,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         self.max_buffer_bytes = int(self.max_buffer_sec * self.sample_rate * self.bytes_per_sample)
 
     def _resolve_precision(self, preset: str, device: str) -> str:
-        preset_cfg = WHISPER_PRESETS.get(preset) or WHISPER_PRESETS.get("balanced", {})
+        preset_cfg = get_preset_config(preset, WHISPER_TURBO_PRESETS, "balanced")
         precision_map = preset_cfg.get("precision", {}) if preset_cfg else {}
         if device in precision_map:
             return str(precision_map[device])

@@ -3,13 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Mapping
 
-from vociferous.domain.model import DEFAULT_MODEL_CACHE_DIR
+from vociferous.engines.cache_manager import get_cache_root, ensure_model_cached
 from vociferous.polish.base import NullPolisher, Polisher, PolisherConfig, RuleBasedPolisher
 from vociferous.polish.llama_cpp_polisher import LlamaCppPolisher, LlamaPolisherOptions
 
 DEFAULT_POLISH_MODEL = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
 DEFAULT_POLISH_REPO = "Qwen/Qwen2.5-1.5B-Instruct-GGUF"
-DEFAULT_POLISH_CACHE = Path(DEFAULT_MODEL_CACHE_DIR) / "polish"
+DEFAULT_POLISH_CACHE = get_cache_root() / "polish"
 
 
 def build_polisher(config: PolisherConfig | None) -> Polisher:
@@ -50,33 +50,22 @@ def _build_llama_polisher(model_name: str, params: Mapping[str, str] | None) -> 
     gpu_layers = int(parsed_params.get("gpu_layers", "0") or 0)
     ctx_len = int(parsed_params.get("context_length", "2048") or 2048)
     skip_download = parsed_params.get("skip_download", "false").lower() == "true"
+    repo_id = parsed_params.get("repo_id", DEFAULT_POLISH_REPO)
 
     if model_path_override:
         path = Path(model_path_override)
+        # For overridden paths, just verify existence
+        if not path.exists():
+            raise ValueError(f"Custom polisher model not found at {path}")
     else:
         path = model_dir / model_name
-
-    if not path.exists():
-        if skip_download:
-            raise ValueError(f"Polisher model not found at {path}")
-        path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            import warnings
-            from huggingface_hub import hf_hub_download  # type: ignore
-        except ImportError as exc:  # pragma: no cover - dependency guard
-            raise RuntimeError(
-                "huggingface_hub is required to download polisher models; pip install .[polish]"
-            ) from exc
-
-        repo_id = parsed_params.get("repo_id", DEFAULT_POLISH_REPO)
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", category=UserWarning, module="huggingface_hub")
-            hf_hub_download(
-                repo_id=repo_id,
-                filename=model_name,
-                local_dir=str(model_dir),
-                local_dir_use_symlinks=False,
-            )
+        # Use centralized cache manager to handle download/caching
+        path = ensure_model_cached(
+            model_path=path,
+            repo_id=repo_id,
+            filename=model_name,
+            skip_download=skip_download,
+        )
 
     options = LlamaPolisherOptions(
         model_path=path,

@@ -218,6 +218,25 @@ def test_session_multiple_stop_calls() -> None:
     session.join()
 
 
+def test_session_stop_raises_on_stuck_threads() -> None:
+    """Test stop() escalates if threads fail to terminate."""
+    session = TranscriptionSession()
+
+    class StuckThread:
+        name = "StuckThread"
+
+        def is_alive(self) -> bool:
+            return True
+
+        def join(self, timeout: float | None = None) -> None:  # pragma: no cover - trivial stub
+            return None
+
+    session._threads = [StuckThread()]  # type: ignore[list-item]
+
+    with pytest.raises(SessionError, match="shutdown timed out"):
+        session.stop()
+
+
 def test_session_sink_receives_complete_on_success() -> None:
     """Test sink.complete() is called with correct result on success."""
     session = TranscriptionSession()

@@ -1,0 +1,2 @@
+Warning: unused section(s) in pyproject.toml: module = ['tests.*', 'vociferous.gui.*']
+Success: no issues found in 35 source files

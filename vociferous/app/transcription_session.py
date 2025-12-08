@@ -104,11 +104,22 @@ class TranscriptionSession:
                 except Exception:
                     pass
         # Join threads outside the lock to avoid deadlock and hangs
+        stuck_threads: list[str] = []
         for thread in self._threads:
             if thread.is_alive():
                 thread.join(timeout=self._config.thread_join_timeout_sec)
                 if thread.is_alive():
-                    logger.warning(f"Thread {thread.name} did not terminate within timeout")
+                    stuck_threads.append(thread.name or "thread")
+
+        if stuck_threads:
+            message = (
+                "TranscriptionSession shutdown timed out for threads: "
+                + ", ".join(stuck_threads)
+            )
+            logger.error(message)
+            if self._exception is None:
+                self._exception = SessionError(message)
+            raise SessionError(message)
 
     def join(self, timeout: float | None = None) -> None:
         import time

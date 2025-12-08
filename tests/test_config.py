@@ -19,3 +19,17 @@ def test_app_config_polish_defaults() -> None:
 def test_app_config_numexpr_default() -> None:
     cfg = AppConfig()
     assert cfg.numexpr_max_threads is None
+
+
+def test_app_config_validates_model_parent_dir() -> None:
+    """Test model_parent_dir validation and expansion."""
+    # Should expand user path
+    cfg = AppConfig(model_parent_dir="~/models")
+    assert cfg.model_parent_dir is not None
+    assert str(cfg.model_parent_dir).startswith("/")  # Absolute path
+    assert "models" in str(cfg.model_parent_dir)
+
+    # Should reject empty string
+    import pytest
+    with pytest.raises(ValueError, match="model_parent_dir must be set"):
+        AppConfig(model_parent_dir="")

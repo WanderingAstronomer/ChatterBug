@@ -102,6 +102,18 @@ class TranscriptionOptions(BaseModel):
     def sanitize_params(cls, v: Mapping[str, str] | None) -> dict[str, str]:
         return _sanitize_params(v)
 
+    @field_validator("language")
+    @classmethod
+    def validate_language(cls, v: str) -> str:
+        v = v.lower().strip()
+        if v == "auto":
+            return v
+        if len(v) != 2 or not v.isalpha():
+            raise ValueError(
+                f"Invalid language code '{v}'. Must be a 2-letter ISO 639-1 code (e.g., 'en', 'es', 'fr') or 'auto'."
+            )
+        return v
+
     @field_validator("beam_size")
     @classmethod
     def validate_beam_size(cls, v: int | None) -> int | None:

@@ -8,8 +8,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping
 
+from vociferous.config.schema import AppConfig
 from vociferous.domain import EngineConfig, TranscriptSink
-from vociferous.domain.model import DEFAULT_WHISPER_MODEL, EngineKind
+from vociferous.domain.model import (
+    DEFAULT_WHISPER_MODEL,
+    EngineKind,
+    TranscriptionOptions,
+    TranscriptionPreset,
+)
 from vociferous.engines.model_registry import normalize_model_name
 from vociferous.polish.base import PolisherConfig
 
@@ -155,6 +161,132 @@ def build_polisher_config(
             "gpu_layers": str(gpu_layers),
             "context_length": str(context_length),
         },
+    )
+
+
+@dataclass
+class TranscribeConfigBundle:
+    engine_config: EngineConfig
+    options: TranscriptionOptions
+    polisher_config: PolisherConfig
+    preset: str
+    numexpr_threads: int | None
+
+
+def build_transcribe_configs(
+    *,
+    app_config: AppConfig,
+    engine: EngineKind,
+    language: str,
+    preset: TranscriptionPreset | None,
+    fast_flag: bool,
+    model: str | None,
+    device: str | None,
+    compute_type: str | None,
+    batch_size: int,
+    beam_size: int,
+    enable_batching: bool,
+    vad_filter: bool,
+    word_timestamps: bool,
+    vllm_endpoint: str,
+    clean_disfluencies: bool,
+    no_clean_disfluencies: bool,
+    polish: bool | None,
+    polish_model: str | None,
+    polish_max_tokens: int,
+    polish_temperature: float,
+    polish_gpu_layers: int,
+    polish_context_length: int,
+    numexpr_max_threads: int | None,
+    prompt: str | None,
+    max_new_tokens: int,
+    gen_temperature: float,
+    whisper_temperature: float,
+) -> TranscribeConfigBundle:
+    """Resolve CLI/config settings into engine/polisher/options configs."""
+    preset_lower = (preset or "").replace("-", "_").lower()
+    if fast_flag and not preset_lower:
+        preset_lower = "fast"
+    if not preset_lower and engine in {"whisper_vllm", "voxtral_vllm"}:
+        preset_lower = "balanced"
+
+    target_device = device or app_config.device
+    resolved_model = model or (app_config.model_name if engine == app_config.engine else None)
+    resolved_compute = compute_type or app_config.compute_type
+    resolved_beam = beam_size
+    resolved_batch = batch_size
+    resolved_enable_batching = enable_batching
+    resolved_vad = vad_filter
+
+    if preset_lower in {"high_accuracy", "balanced", "fast"}:
+        preset_settings = resolve_preset(
+            preset_lower,
+            engine,
+            target_device,
+            current_model=resolved_model,
+            current_compute_type=resolved_compute,
+            current_beam_size=beam_size,
+            current_batch_size=batch_size,
+        )
+        resolved_model = preset_settings.model
+        resolved_compute = preset_settings.compute_type or resolved_compute
+        resolved_beam = preset_settings.beam_size
+        resolved_batch = preset_settings.batch_size
+        resolved_enable_batching = preset_settings.enable_batching
+        resolved_vad = preset_settings.vad_filter
+
+    from typing import cast
+    preset_value: TranscriptionPreset | None = (
+        cast(TranscriptionPreset, preset_lower) if preset_lower in {"high_accuracy", "balanced", "fast"} else None
+    )
+
+    numexpr_threads = app_config.numexpr_max_threads if numexpr_max_threads is None else numexpr_max_threads
+    clean_disfluencies_value = clean_disfluencies or not no_clean_disfluencies
+
+    polisher_config = build_polisher_config(
+        enabled=app_config.polish_enabled if polish is None else polish,
+        model=polish_model or app_config.polish_model,
+        base_params=app_config.polish_params,
+        max_tokens=polish_max_tokens,
+        temperature=polish_temperature,
+        gpu_layers=polish_gpu_layers,
+        context_length=polish_context_length,
+    )
+
+    engine_config = build_engine_config(
+        engine,
+        model_name=resolved_model or (app_config.model_name if engine == app_config.engine else None),
+        compute_type=resolved_compute or app_config.compute_type,
+        device=target_device,
+        model_cache_dir=app_config.model_cache_dir,
+        params=app_config.params,
+        preset=preset_lower,
+        word_timestamps=word_timestamps,
+        enable_batching=resolved_enable_batching,
+        batch_size=resolved_batch,
+        vad_filter=resolved_vad,
+        clean_disfluencies=clean_disfluencies_value,
+        vllm_endpoint=vllm_endpoint,
+    )
+
+    options = TranscriptionOptions(
+        language=language,
+        preset=preset_value,
+        prompt=prompt,
+        params={
+            "max_new_tokens": str(max_new_tokens) if max_new_tokens > 0 else "",
+            "temperature": str(gen_temperature) if gen_temperature > 0 else "",
+        },
+        beam_size=resolved_beam if resolved_beam > 0 else None,
+        temperature=whisper_temperature if whisper_temperature > 0 else None,
+    )
+
+    return TranscribeConfigBundle(
+        engine_config=engine_config,
+        options=options,
+        polisher_config=polisher_config,
+        preset=preset_lower,
+        numexpr_threads=numexpr_threads,
     )
 
 

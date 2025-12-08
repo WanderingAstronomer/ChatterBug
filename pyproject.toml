@@ -9,18 +9,13 @@ dependencies = [
   "pydantic>=2.0.0",
   "structlog>=24.0.0",
   "numpy>=1.26.0",
-  "faster-whisper>=1.0.0",
-  "silero-vad>=5.0",
-  "torch>=2.0.0",
-  "nvidia-cudnn-cu12>=9.1.0.70",
-  "transformers>=4.54.0",
-    "mistral-common[audio]>=1.0.0",
-  "accelerate>=0.20.0",
   "rich>=13.7.0",
   "sounddevice>=0.4.6",
   "pyperclip>=1.8.2",
   "openai>=1.0.0",
   "tomli-w>=1.0.0",
+  "faster-whisper>=1.0.0",
+  "silero-vad>=5.0",
 ]
 
 [project.optional-dependencies]
@@ -30,6 +25,16 @@ gui = [
   "kivymd>=1.2.0",
   "kivy>=2.3.0",
   "pillow>=10.0.0",
+]
+cuda = [
+  "torch>=2.0.0",
+  "nvidia-cudnn-cu12>=9.1.0.70",
+]
+voxtral = [
+  "transformers>=4.54.0",
+  "mistral-common[audio]>=1.0.0",
+  "accelerate>=0.20.0",
+  "torch>=2.0.0",
 ]
 
 [project.scripts]

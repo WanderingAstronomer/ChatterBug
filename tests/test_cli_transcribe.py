@@ -169,3 +169,116 @@ def test_cli_transcribe_clean_disfluencies_explicit(tmp_path: Path, monkeypatch:
     assert result.exit_code == 0
     cfg = calls["engine_config"]
     assert cfg.params["clean_disfluencies"] == "true"
+
+
+def test_cli_transcribe_engine_short_alias(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that -e short alias for --engine works."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "-e", "voxtral_local"],
+    )
+
+    assert result.exit_code == 0
+    assert calls["engine_kind"] == "voxtral_local"
+
+
+def test_cli_transcribe_language_short_alias(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that -l short alias for --language works."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "-l", "es"],
+    )
+
+    assert result.exit_code == 0
+    start_args = calls["start_args"]
+    options = start_args[3]
+    assert options.language == "es"
+
+
+def test_cli_transcribe_output_short_alias(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that -o short alias for --output works."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+    output_file = tmp_path / "out.txt"
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "-o", str(output_file)],
+    )
+
+    assert result.exit_code == 0
+
+
+def test_cli_transcribe_preset_short_alias(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that -p short alias for --preset works."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "-p", "high_accuracy"],
+    )
+
+    assert result.exit_code == 0
+    cfg = calls["engine_config"]
+    assert cfg.params.get("preset") == "high_accuracy"
+
+
+def test_cli_transcribe_rejects_directory_as_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that passing a directory instead of a file shows clear error."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio_dir = tmp_path / "audio"
+    audio_dir.mkdir()
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio_dir)],
+    )
+
+    assert result.exit_code != 0
+    assert "directory" in result.stdout.lower()
+
+
+def test_cli_transcribe_rejects_output_directory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that passing a directory for --output shows clear error."""
+    calls = _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+    output_dir = tmp_path / "output"
+    output_dir.mkdir()
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "-o", str(output_dir)],
+    )
+
+    assert result.exit_code != 0
+    assert "directory" in result.stdout.lower()
+
+
+def test_cli_transcribe_validates_language(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Test that invalid language codes are rejected by CLI."""
+    _setup_cli_fixtures(monkeypatch)
+    audio = tmp_path / "a.wav"
+    audio.write_bytes(b"data")
+
+    result = CliRunner().invoke(
+        app,
+        ["transcribe", str(audio), "-l", "eng"],
+    )
+
+    assert result.exit_code != 0
+    # Typer/Click might catch the ValueError and print it to stdout/stderr
+    assert "Invalid language code" in str(result.exception) or "Invalid language code" in result.stdout
+
+

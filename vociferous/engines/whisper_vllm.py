@@ -46,30 +46,12 @@ from vociferous.domain.model import (
 )
 from vociferous.domain.exceptions import DependencyError, EngineError
 from vociferous.engines.model_registry import normalize_model_name
+from vociferous.engines.presets import WHISPER_VLLM_PRESETS
 
 logger = logging.getLogger(__name__)
 
 # Default vLLM server endpoint
 DEFAULT_VLLM_ENDPOINT = "http://localhost:8000"
-
-# Preset configurations mapping preset names to model + decoding params
-WHISPER_VLLM_PRESETS = {
-    "high_accuracy": {
-        "model": "openai/whisper-large-v3",
-        "beam_size": 2,
-        "temperature": 0.0,
-    },
-    "balanced": {
-        "model": "openai/whisper-large-v3-turbo",
-        "beam_size": 1,
-        "temperature": 0.0,
-    },
-    "fast": {
-        "model": "openai/whisper-large-v3-turbo",
-        "beam_size": 1,
-        "temperature": 0.0,
-    },
-}
 
 
 class WhisperVLLMEngine(TranscriptionEngine):

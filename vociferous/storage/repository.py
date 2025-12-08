@@ -22,12 +22,15 @@ class FileSystemStorage(StorageRepository):
 
     def __init__(self, history_dir: Path) -> None:
         self.history_dir = history_dir
+        from vociferous.storage.history import HistoryStorage
+
+        self._history = HistoryStorage(history_dir)
 
     def save_transcription(self, result: TranscriptionResult, target: Path | None = None) -> Path | None:
-        raise NotImplementedError("File saving not yet implemented")
+        return self._history.save_transcription(result, target=target)
 
     def load_history(self, limit: int) -> Iterable[TranscriptionResult]:
-        return iter(())
+        return self._history.load_history(limit)
 
     def clear_history(self) -> None:
-        pass
+        self._history.clear_history()

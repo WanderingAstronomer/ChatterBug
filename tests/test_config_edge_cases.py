@@ -5,7 +5,10 @@ from typing import Mapping
 
 from pydantic import ValidationError
 
-from vociferous.config.schema import AppConfig, load_config
+import tomllib
+
+from vociferous.config.schema import AppConfig, load_config, save_config
+from vociferous.config.migrations import migrate_raw_config
 from vociferous.domain.model import DEFAULT_WHISPER_MODEL
 
 
@@ -127,3 +130,51 @@ def test_app_config_params_immutability() -> None:
     except (TypeError, AttributeError):
         # Good - params is immutable
         pass
+
+
+def test_load_config_migrates_parakeet_and_updates_model(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Parakeet engine configs should migrate to whisper_vllm with a better model."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('engine = "parakeet_rnnt"\nmodel_name = "openai/whisper-large-v3-turbo"\n')
+
+    with caplog.at_level("WARNING"):
+        cfg = load_config(config_path)
+
+    assert cfg.engine == "whisper_vllm"
+    assert cfg.model_name == "openai/whisper-large-v3-turbo"
+    assert any("Parakeet engine removed" in msg for msg in caplog.messages)
+
+
+def test_load_config_migrates_voxtral_alias(tmp_path: Path, caplog: pytest.LogCaptureFixture) -> None:
+    """Legacy voxtral engine name should migrate to voxtral_local."""
+    config_path = tmp_path / "config.toml"
+    config_path.write_text('engine = "voxtral"\n')
+
+    with caplog.at_level("WARNING"):
+        cfg = load_config(config_path)
+
+    assert cfg.engine == "voxtral_local"
+    assert any("Engine 'voxtral' renamed" in msg for msg in caplog.messages)
+
+
+def test_migrate_raw_config_returns_new_dict() -> None:
+    original = {"engine": "voxtral"}
+    migrated = migrate_raw_config(original)
+
+    assert migrated is not original
+    assert migrated["engine"] == "voxtral_local"
+    assert original["engine"] == "voxtral"
+
+
+def test_save_config_writes_toml_and_creates_directory(tmp_path: Path) -> None:
+    """save_config should create directories and write TOML content."""
+    target_dir = tmp_path / "nested" / "config"
+    config_path = target_dir / "config.toml"
+    cfg = AppConfig(device="cuda", compute_type="float16")
+
+    save_config(cfg, config_path)
+
+    assert config_path.exists()
+    data = tomllib.loads(config_path.read_text(encoding="utf-8"))
+    assert data["device"] == "cuda"
+    assert data["compute_type"] == "float16"
