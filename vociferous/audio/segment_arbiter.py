@@ -75,7 +75,10 @@ def _starts_with_connector(text: str) -> bool:
     text = text.lstrip()
     if not text:
         return False
-    first_word = text.split()[0].lower().rstrip(OTHER_PUNCTUATION)
+    words = text.split()
+    if not words:
+        return False
+    first_word = words[0].lower().rstrip(OTHER_PUNCTUATION)
     return first_word in CONNECTOR_WORDS
 
 
