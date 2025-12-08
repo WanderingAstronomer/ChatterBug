@@ -33,6 +33,38 @@ except ImportError as exc:  # pragma: no cover - tooling dependency guard
 
 configure_logging()
 
+# Language support constants (ISO 639-1 codes)
+WHISPER_LANGUAGES = {
+    "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "as": "Assamese",
+    "az": "Azerbaijani", "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian",
+    "bn": "Bengali", "bo": "Tibetan", "br": "Breton", "bs": "Bosnian",
+    "ca": "Catalan", "cs": "Czech", "cy": "Welsh", "da": "Danish",
+    "de": "German", "el": "Greek", "en": "English", "es": "Spanish",
+    "et": "Estonian", "eu": "Basque", "fa": "Persian", "fi": "Finnish",
+    "fo": "Faroese", "fr": "French", "gl": "Galician", "gu": "Gujarati",
+    "ha": "Hausa", "haw": "Hawaiian", "he": "Hebrew", "hi": "Hindi",
+    "hr": "Croatian", "ht": "Haitian Creole", "hu": "Hungarian", "hy": "Armenian",
+    "id": "Indonesian", "is": "Icelandic", "it": "Italian", "ja": "Japanese",
+    "jw": "Javanese", "ka": "Georgian", "kk": "Kazakh", "km": "Khmer",
+    "kn": "Kannada", "ko": "Korean", "la": "Latin", "lb": "Luxembourgish",
+    "ln": "Lingala", "lo": "Lao", "lt": "Lithuanian", "lv": "Latvian",
+    "mg": "Malagasy", "mi": "Maori", "mk": "Macedonian", "ml": "Malayalam",
+    "mn": "Mongolian", "mr": "Marathi", "ms": "Malay", "mt": "Maltese",
+    "my": "Myanmar", "ne": "Nepali", "nl": "Dutch", "nn": "Norwegian Nynorsk",
+    "no": "Norwegian", "oc": "Occitan", "pa": "Punjabi", "pl": "Polish",
+    "ps": "Pashto", "pt": "Portuguese", "ro": "Romanian", "ru": "Russian",
+    "sa": "Sanskrit", "sd": "Sindhi", "si": "Sinhala", "sk": "Slovak",
+    "sl": "Slovenian", "sn": "Shona", "so": "Somali", "sq": "Albanian",
+    "sr": "Serbian", "su": "Sundanese", "sv": "Swedish", "sw": "Swahili",
+    "ta": "Tamil", "te": "Telugu", "tg": "Tajik", "th": "Thai",
+    "tk": "Turkmen", "tl": "Tagalog", "tr": "Turkish", "tt": "Tatar",
+    "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese",
+    "yi": "Yiddish", "yo": "Yoruba", "zh": "Chinese", "yue": "Cantonese",
+}
+
+# Voxtral core languages with best performance (subset of Whisper languages)
+VOXTRAL_CORE_LANGUAGES = ["en", "es", "fr", "de", "it", "pt", "hi", "nl"]
+
 # Custom theme with bright, readable colors
 console = Console(theme=Theme({
     "option": "bright_cyan",
@@ -312,38 +344,6 @@ def languages() -> None:
       vociferous transcribe audio.mp3 -l fr      French
       vociferous transcribe audio.flac -l ja     Japanese
     """
-    # Whisper languages (99 total)
-    whisper_langs = {
-        "af": "Afrikaans", "am": "Amharic", "ar": "Arabic", "as": "Assamese",
-        "az": "Azerbaijani", "ba": "Bashkir", "be": "Belarusian", "bg": "Bulgarian",
-        "bn": "Bengali", "bo": "Tibetan", "br": "Breton", "bs": "Bosnian",
-        "ca": "Catalan", "cs": "Czech", "cy": "Welsh", "da": "Danish",
-        "de": "German", "el": "Greek", "en": "English", "es": "Spanish",
-        "et": "Estonian", "eu": "Basque", "fa": "Persian", "fi": "Finnish",
-        "fo": "Faroese", "fr": "French", "gl": "Galician", "gu": "Gujarati",
-        "ha": "Hausa", "haw": "Hawaiian", "he": "Hebrew", "hi": "Hindi",
-        "hr": "Croatian", "ht": "Haitian Creole", "hu": "Hungarian", "hy": "Armenian",
-        "id": "Indonesian", "is": "Icelandic", "it": "Italian", "ja": "Japanese",
-        "jw": "Javanese", "ka": "Georgian", "kk": "Kazakh", "km": "Khmer",
-        "kn": "Kannada", "ko": "Korean", "la": "Latin", "lb": "Luxembourgish",
-        "ln": "Lingala", "lo": "Lao", "lt": "Lithuanian", "lv": "Latvian",
-        "mg": "Malagasy", "mi": "Maori", "mk": "Macedonian", "ml": "Malayalam",
-        "mn": "Mongolian", "mr": "Marathi", "ms": "Malay", "mt": "Maltese",
-        "my": "Myanmar", "ne": "Nepali", "nl": "Dutch", "nn": "Norwegian Nynorsk",
-        "no": "Norwegian", "oc": "Occitan", "pa": "Punjabi", "pl": "Polish",
-        "ps": "Pashto", "pt": "Portuguese", "ro": "Romanian", "ru": "Russian",
-        "sa": "Sanskrit", "sd": "Sindhi", "si": "Sinhala", "sk": "Slovak",
-        "sl": "Slovenian", "sn": "Shona", "so": "Somali", "sq": "Albanian",
-        "sr": "Serbian", "su": "Sundanese", "sv": "Swedish", "sw": "Swahili",
-        "ta": "Tamil", "te": "Telugu", "tg": "Tajik", "th": "Thai",
-        "tk": "Turkmen", "tl": "Tagalog", "tr": "Turkish", "tt": "Tatar",
-        "uk": "Ukrainian", "ur": "Urdu", "uz": "Uzbek", "vi": "Vietnamese",
-        "yi": "Yiddish", "yo": "Yoruba", "zh": "Chinese", "yue": "Cantonese",
-    }
-    
-    # Voxtral core languages (subset with best performance)
-    voxtral_core = ["en", "es", "fr", "de", "it", "pt", "hi", "nl"]
-    
     # Create main table for Whisper
     table = Table(title="Whisper (CTranslate2) - All Engines", 
                   show_header=True, header_style="bold cyan",
@@ -356,7 +356,7 @@ def languages() -> None:
     table.add_column("Language", style="white")
     
     # Split languages into 3 columns for compact display
-    sorted_langs = sorted(whisper_langs.items())
+    sorted_langs = sorted(WHISPER_LANGUAGES.items())
     chunk_size = (len(sorted_langs) + 2) // 3  # Round up division
     
     for i in range(chunk_size):
@@ -372,7 +372,7 @@ def languages() -> None:
     
     console.print()
     console.print(table)
-    console.print(f"\n[dim]Total: {len(whisper_langs)} languages[/dim]")
+    console.print(f"\n[dim]Total: {len(WHISPER_LANGUAGES)} languages[/dim]")
     
     # Create Voxtral table
     voxtral_table = Table(title="Voxtral (Mistral-based) - Core Languages", 
@@ -381,8 +381,8 @@ def languages() -> None:
     voxtral_table.add_column("Code", style="cyan", width=6)
     voxtral_table.add_column("Language", style="white")
     
-    for code in voxtral_core:
-        voxtral_table.add_row(code, whisper_langs.get(code, "Unknown"))
+    for code in VOXTRAL_CORE_LANGUAGES:
+        voxtral_table.add_row(code, WHISPER_LANGUAGES.get(code, "Unknown"))
     
     console.print()
     console.print(voxtral_table)
