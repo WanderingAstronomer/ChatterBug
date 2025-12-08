@@ -27,6 +27,7 @@ from vociferous.engines.presets import (
     resolve_preset_name,
 )
 from vociferous.audio.vad import VadWrapper, VadService
+from vociferous.audio.segment_arbiter import SegmentArbiter
 
 logger = logging.getLogger(__name__)
 
@@ -118,6 +119,23 @@ class WhisperTurboEngine(TranscriptionEngine):
         # Prevent OOM: max buffer size (60 seconds ≈ 1.83MB for 16kHz mono PCM16)
         self.max_buffer_sec = float(params.get("max_buffer_sec", 60.0))
         self.max_buffer_bytes = int(self.max_buffer_sec * self.sample_rate * self.bytes_per_sample)
+
+        # Segment arbiter configuration
+        self.use_segment_arbiter = _bool_param(params, "use_segment_arbiter", True)
+        self.arbiter_min_duration_s = float(params.get("arbiter_min_duration_s", 1.0))
+        self.arbiter_min_words = int(params.get("arbiter_min_words", 4))
+        self.arbiter_hard_break_s = float(params.get("arbiter_hard_break_s", 1.5))
+        self.arbiter_soft_break_s = float(params.get("arbiter_soft_break_s", 0.7))
+
+        # Initialize segment arbiter
+        self._arbiter: SegmentArbiter | None = None
+        if self.use_segment_arbiter:
+            self._arbiter = SegmentArbiter(
+                min_segment_duration_s=self.arbiter_min_duration_s,
+                min_segment_words=self.arbiter_min_words,
+                hard_break_silence_s=self.arbiter_hard_break_s,
+                soft_break_silence_s=self.arbiter_soft_break_s,
+            )
 
     def _resolve_precision(self, preset: str, device: str) -> str:
         preset_cfg = get_preset_config(preset, WHISPER_TURBO_PRESETS, "balanced")
@@ -267,6 +285,11 @@ class WhisperTurboEngine(TranscriptionEngine):
     def poll_segments(self) -> List[TranscriptSegment]:
         segs = list(self._segments)
         self._segments.clear()
+        
+        # Apply segment arbiter if enabled
+        if self._arbiter and segs:
+            segs = self._arbiter.arbitrate(segs)
+        
         return segs
 
     def _maybe_process(self, force: bool) -> None:
