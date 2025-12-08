@@ -11,6 +11,7 @@ from kivymd.uix.navigationdrawer import MDNavigationLayout, MDNavigationDrawer
 from kivymd.uix.toolbar import MDTopAppBar
 from kivymd.uix.list import OneLineIconListItem, IconLeftWidget
 from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.snackbar import MDSnackbar
 
 import structlog
 
@@ -42,6 +43,9 @@ class VociferousGUIApp(MDApp):
         
         self.screen_manager: ScreenManager | None = None
         self.nav_drawer: MDNavigationDrawer | None = None
+        
+        # Bind keyboard events for shortcuts
+        Window.bind(on_keyboard=self._on_keyboard)
 
     def build(self) -> MDNavigationLayout | ScreenManager:
         """Build the application UI.
@@ -162,6 +166,82 @@ class VociferousGUIApp(MDApp):
             self.screen_manager.current = screen_name
         if self.nav_drawer:
             self.nav_drawer.set_state("close")
+
+    def show_notification(self, message: str, duration: float = 3) -> None:
+        """Show a snackbar notification.
+        
+        Args:
+            message: Message to display
+            duration: Duration in seconds to show the notification
+        """
+        snackbar = MDSnackbar(
+            text=message,
+            duration=duration,
+        )
+        snackbar.open()
+
+    def _on_keyboard(self, window, key, scancode, codepoint, modifier):
+        """Handle keyboard shortcuts.
+        
+        Args:
+            window: Window instance
+            key: Key code
+            scancode: Platform-specific scan code
+            codepoint: Text representation of key
+            modifier: List of modifier keys pressed
+        """
+        # Ctrl+O: Browse files (only on home screen)
+        if 'ctrl' in modifier and codepoint == 'o':
+            if self.screen_manager and self.screen_manager.current == 'home':
+                home_screen = self.screen_manager.get_screen('home')
+                if hasattr(home_screen, '_browse_files'):
+                    home_screen._browse_files()
+                    return True
+        
+        # Ctrl+T: Start transcription (only on home screen)
+        elif 'ctrl' in modifier and codepoint == 't':
+            if self.screen_manager and self.screen_manager.current == 'home':
+                home_screen = self.screen_manager.get_screen('home')
+                if hasattr(home_screen, '_start_transcription'):
+                    home_screen._start_transcription()
+                    return True
+        
+        # Ctrl+S: Save transcript (only on home screen)
+        elif 'ctrl' in modifier and codepoint == 's':
+            if self.screen_manager and self.screen_manager.current == 'home':
+                home_screen = self.screen_manager.get_screen('home')
+                if hasattr(home_screen, '_save_transcript'):
+                    home_screen._save_transcript()
+                    return True
+        
+        # Ctrl+,: Open settings
+        elif 'ctrl' in modifier and codepoint == ',':
+            self._navigate_to('settings')
+            return True
+        
+        # Esc: Cancel current operation or close drawer
+        elif key == 27:  # ESC key
+            if self.nav_drawer and self.nav_drawer.state == "open":
+                self.nav_drawer.set_state("close")
+                return True
+            elif self.screen_manager and self.screen_manager.current == 'home':
+                home_screen = self.screen_manager.get_screen('home')
+                if hasattr(home_screen, '_cancel_operation'):
+                    home_screen._cancel_operation()
+                    return True
+        
+        return False
+
+    def switch_theme(self, mode: str) -> None:
+        """Switch application theme.
+        
+        Args:
+            mode: Theme mode - "Light" or "Dark"
+        """
+        if mode in ["Light", "Dark"]:
+            self.theme_cls.theme_style = mode
+            logger.info("Theme switched", mode=mode)
+            self.show_notification(f"Theme changed to {mode} mode")
 
 
 def run_gui() -> None:

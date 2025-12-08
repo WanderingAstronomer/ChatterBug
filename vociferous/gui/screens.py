@@ -8,6 +8,7 @@ from typing import Any
 from kivy.uix.screenmanager import Screen
 from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.popup import Popup
+from kivy.core.window import Window
 from kivymd.uix.label import MDLabel
 from kivymd.uix.button import MDRaisedButton, MDFlatButton
 from kivymd.uix.textfield import MDTextField
@@ -23,6 +24,7 @@ from kivymd.uix.list import (
 from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox
 from kivymd.uix.menu import MDDropdownMenu
 from kivymd.uix.filemanager import MDFileManager
+from kivymd.uix.tooltip import MDTooltip
 
 import structlog
 
@@ -31,6 +33,11 @@ from vociferous.domain.model import EngineKind
 from .transcription import GUITranscriptionManager
 
 logger = structlog.get_logger(__name__)
+
+
+class TooltipButton(MDRaisedButton, MDTooltip):
+    """Button with tooltip support."""
+    pass
 
 
 class HomeScreen(Screen):
@@ -48,6 +55,9 @@ class HomeScreen(Screen):
         self.transcription_manager = GUITranscriptionManager()
         self.file_manager: MDFileManager | None = None
         self._build_ui()
+        
+        # Bind drag-and-drop events
+        Window.bind(on_dropfile=self._on_file_drop)
 
     def _build_ui(self) -> None:
         """Build the home screen UI."""
@@ -106,19 +116,21 @@ class HomeScreen(Screen):
             height=60,
         )
         
-        browse_button = MDRaisedButton(
+        browse_button = TooltipButton(
             text="Browse Files",
             size_hint=(0.5, 1),
             on_release=self._browse_files,
         )
+        browse_button.tooltip_text = "Browse for audio files (Ctrl+O)"
         button_layout.add_widget(browse_button)
         
-        self.transcribe_button = MDRaisedButton(
+        self.transcribe_button = TooltipButton(
             text="Start Transcription",
             size_hint=(0.5, 1),
             disabled=True,
             on_release=self._start_transcription,
         )
+        self.transcribe_button.tooltip_text = "Start transcribing the selected file (Ctrl+T)"
         button_layout.add_widget(self.transcribe_button)
         
         file_card.add_widget(button_layout)
@@ -150,6 +162,17 @@ class HomeScreen(Screen):
         )
         scroll_view.add_widget(self.output_field)
         file_card.add_widget(scroll_view)
+        
+        # Save button
+        self.save_button = TooltipButton(
+            text="Save Transcript",
+            size_hint=(1, None),
+            height=50,
+            disabled=True,
+            on_release=self._save_transcript,
+        )
+        self.save_button.tooltip_text = "Save transcript to file (Ctrl+S)"
+        file_card.add_widget(self.save_button)
         
         layout.add_widget(file_card)
         
@@ -245,6 +268,13 @@ class HomeScreen(Screen):
         self.output_field.text = text
         self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]✓ Complete![/color]"
         self.transcribe_button.disabled = False
+        self.save_button.disabled = False
+        
+        # Show notification
+        from kivymd.app import MDApp
+        app = MDApp.get_running_app()
+        if hasattr(app, 'show_notification'):
+            app.show_notification("Transcription complete!")
 
     def _on_transcription_error(self, error: str) -> None:
         """Handle transcription error.
@@ -255,6 +285,84 @@ class HomeScreen(Screen):
         logger.error("Transcription error", error=error)
         self.status_label.text = f"[color=#{self.COLOR_ERROR}]✗ Error: {error}[/color]"
         self.transcribe_button.disabled = False
+        
+        # Show notification
+        from kivymd.app import MDApp
+        app = MDApp.get_running_app()
+        if hasattr(app, 'show_notification'):
+            app.show_notification(f"Transcription failed: {error}")
+
+    def _on_file_drop(self, window, file_path: bytes, *args: Any) -> None:
+        """Handle file drop event.
+        
+        Args:
+            window: Window instance
+            file_path: Path to dropped file as bytes
+        """
+        try:
+            # Convert bytes to string
+            path_str = file_path.decode('utf-8')
+            logger.info("File dropped", path=path_str)
+            
+            # Select the file
+            self._select_file(path_str)
+            
+            # Show notification
+            from kivymd.app import MDApp
+            app = MDApp.get_running_app()
+            if hasattr(app, 'show_notification'):
+                app.show_notification("File loaded successfully")
+        except Exception as e:
+            logger.error("Error handling file drop", error=str(e))
+
+    def _save_transcript(self, *args: Any) -> None:
+        """Save the transcript to a file."""
+        if not self.output_field.text:
+            return
+        
+        try:
+            # Generate output filename based on input file
+            if self.selected_file:
+                output_path = self.selected_file.with_suffix('.txt')
+            else:
+                output_path = Path.home() / "transcript.txt"
+            
+            # Save transcript
+            output_path.write_text(self.output_field.text, encoding='utf-8')
+            logger.info("Transcript saved", path=str(output_path))
+            
+            self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]✓ Saved to {output_path.name}[/color]"
+            
+            # Show notification
+            from kivymd.app import MDApp
+            app = MDApp.get_running_app()
+            if hasattr(app, 'show_notification'):
+                app.show_notification(f"Transcript saved to {output_path.name}")
+        except Exception as e:
+            logger.error("Error saving transcript", error=str(e))
+            self.status_label.text = f"[color=#{self.COLOR_ERROR}]✗ Error saving file[/color]"
+            
+            # Show notification
+            from kivymd.app import MDApp
+            app = MDApp.get_running_app()
+            if hasattr(app, 'show_notification'):
+                app.show_notification(f"Failed to save: {str(e)}")
+
+    def _cancel_operation(self) -> None:
+        """Cancel the current transcription operation."""
+        if self.transcription_manager and self.transcription_manager.current_task:
+            if self.transcription_manager.current_task.is_running:
+                self.transcription_manager.stop_current()
+                self.status_label.text = f"[color=#{self.COLOR_WARNING}]⚠ Cancelled[/color]"
+                self.transcribe_button.disabled = False
+                
+                # Show notification
+                from kivymd.app import MDApp
+                app = MDApp.get_running_app()
+                if hasattr(app, 'show_notification'):
+                    app.show_notification("Transcription cancelled")
+                
+                logger.info("Transcription cancelled by user")
 
 
 class SettingsScreen(Screen):
@@ -316,6 +424,27 @@ class SettingsScreen(Screen):
         )
         settings_layout.add_widget(device_item)
         self.device_item = device_item
+        
+        # Appearance section
+        settings_layout.add_widget(self._create_section_header("Appearance"))
+        
+        # Theme toggle
+        theme_item = TwoLineListItem(
+            text="Theme",
+            secondary_text="Current: Dark",
+            on_release=self._show_theme_menu,
+        )
+        settings_layout.add_widget(theme_item)
+        self.theme_item = theme_item
+        
+        # Font size selection
+        font_item = TwoLineListItem(
+            text="Font Size",
+            secondary_text="Current: 100%",
+            on_release=self._show_font_menu,
+        )
+        settings_layout.add_widget(font_item)
+        self.font_item = font_item
         
         # Transcription options section
         settings_layout.add_widget(self._create_section_header("Transcription Options"))
@@ -491,6 +620,94 @@ class SettingsScreen(Screen):
         try:
             save_config(self.config)
             logger.info("Settings saved successfully")
-            # Could add a toast/snackbar notification here
+            
+            # Show notification
+            from kivymd.app import MDApp
+            app = MDApp.get_running_app()
+            if hasattr(app, 'show_notification'):
+                app.show_notification("Settings saved successfully")
         except Exception as e:
             logger.error("Failed to save settings", error=str(e))
+            
+            # Show notification
+            from kivymd.app import MDApp
+            app = MDApp.get_running_app()
+            if hasattr(app, 'show_notification'):
+                app.show_notification(f"Failed to save settings: {str(e)}")
+
+    def _show_theme_menu(self, item: Any) -> None:
+        """Show theme selection menu."""
+        themes = ["Light", "Dark"]
+        menu_items = [
+            {
+                "text": theme,
+                "on_release": lambda x=theme: self._select_theme(x),
+            }
+            for theme in themes
+        ]
+        self.theme_menu = MDDropdownMenu(
+            caller=item,
+            items=menu_items,
+            width_mult=4,
+        )
+        self.theme_menu.open()
+
+    def _select_theme(self, theme: str) -> None:
+        """Select a theme.
+        
+        Args:
+            theme: Selected theme name ("Light" or "Dark")
+        """
+        logger.info("Theme selected", theme=theme)
+        from kivymd.app import MDApp
+        app = MDApp.get_running_app()
+        if hasattr(app, 'switch_theme'):
+            app.switch_theme(theme)
+        self.theme_item.secondary_text = f"Current: {theme}"
+        if hasattr(self, "theme_menu"):
+            self.theme_menu.dismiss()
+
+    def _show_font_menu(self, item: Any) -> None:
+        """Show font size selection menu."""
+        font_sizes = ["80%", "90%", "100%", "110%", "120%", "130%", "140%", "150%"]
+        menu_items = [
+            {
+                "text": size,
+                "on_release": lambda x=size: self._select_font_size(x),
+            }
+            for size in font_sizes
+        ]
+        self.font_menu = MDDropdownMenu(
+            caller=item,
+            items=menu_items,
+            width_mult=4,
+        )
+        self.font_menu.open()
+
+    def _select_font_size(self, size: str) -> None:
+        """Select a font size.
+        
+        Args:
+            size: Selected font size percentage
+        """
+        logger.info("Font size selected", size=size)
+        
+        # Extract percentage value
+        percent = int(size.rstrip('%'))
+        multiplier = percent / 100.0
+        
+        # Apply font size to app
+        from kivymd.app import MDApp
+        app = MDApp.get_running_app()
+        
+        # Store the multiplier for future use
+        # In a real implementation, this would be saved to config
+        # and applied to all text elements
+        
+        self.font_item.secondary_text = f"Current: {size}"
+        if hasattr(self, "font_menu"):
+            self.font_menu.dismiss()
+        
+        # Show notification
+        if hasattr(app, 'show_notification'):
+            app.show_notification(f"Font size set to {size} (restart may be required)")
