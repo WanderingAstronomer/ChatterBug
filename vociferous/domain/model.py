@@ -34,6 +34,52 @@ class AudioChunk(BaseModel):
     end_s: float
 
 
+class SpeechMap(BaseModel):
+    """Analysis results from audio preprocessing/VAD.
+    
+    Contains speech boundaries and silence gap information for
+    intelligent audio segmentation.
+    """
+    model_config = ConfigDict(frozen=True)
+    first_speech_ms: int
+    last_speech_ms: int
+    silence_gaps: Sequence[tuple[int, int, int]] = Field(default_factory=tuple)  # (start_ms, end_ms, duration_ms)
+    
+    
+class PreprocessingConfig(BaseModel):
+    """Configuration for audio preprocessing pipeline."""
+    model_config = ConfigDict(frozen=True)
+    
+    # Trimming
+    trim_head: bool = True
+    trim_tail: bool = True
+    head_margin_ms: int = 500
+    tail_margin_ms: int = 500
+    
+    # Splitting
+    split_on_gaps: bool = True
+    gap_threshold_ms: int = 5000  # Only split at 5+ second gaps
+    
+    # VAD settings
+    energy_threshold_db: float = -40.0
+    min_speech_duration_ms: int = 300
+    min_silence_duration_ms: int = 500
+    
+    @field_validator("head_margin_ms", "tail_margin_ms", "gap_threshold_ms", "min_speech_duration_ms", "min_silence_duration_ms")
+    @classmethod
+    def validate_positive_ms(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("Time values must be non-negative")
+        return v
+    
+    @field_validator("energy_threshold_db")
+    @classmethod
+    def validate_energy_threshold(cls, v: float) -> float:
+        if v > 0:
+            raise ValueError("Energy threshold must be negative (dB)")
+        return v
+
+
 class TranscriptSegment(BaseModel):
     model_config = ConfigDict(frozen=True)
     text: str

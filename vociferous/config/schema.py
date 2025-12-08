@@ -47,6 +47,17 @@ class AppConfig(BaseModel):
             "context_length": "2048",
         }
     )
+    # Audio preprocessing options (opt-in for backward compatibility)
+    preprocessing_enabled: bool = False
+    preprocessing_trim_head: bool = True
+    preprocessing_trim_tail: bool = True
+    preprocessing_head_margin_ms: int = 500
+    preprocessing_tail_margin_ms: int = 500
+    preprocessing_split_on_gaps: bool = True
+    preprocessing_gap_threshold_ms: int = 5000
+    preprocessing_energy_threshold_db: float = -40.0
+    preprocessing_min_speech_duration_ms: int = 300
+    preprocessing_min_silence_duration_ms: int = 500
 
     @field_validator("compute_type")
     @classmethod

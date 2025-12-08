@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Iterable
 from threading import Event
 
-from vociferous.domain.model import AudioChunk, AudioSource
+from vociferous.domain.model import AudioChunk, AudioSource, PreprocessingConfig
 from vociferous.domain.exceptions import ConfigurationError
 from .decoder import AudioDecoder, FfmpegDecoder, WavDecoder
 from .recorder import MicrophoneRecorder, SoundDeviceRecorder
@@ -128,3 +128,89 @@ class MicrophoneSource(AudioSource):
             start = end
             if self._stop_event.is_set():
                 break
+
+
+class PreprocessedFileSource(AudioSource):
+    """Streams audio from a file with intelligent preprocessing.
+    
+    Applies VAD-based boundary detection and silence gap analysis to:
+    1. Trim leading/trailing silence with safety margins
+    2. Split at significant silence gaps (≥5s by default)
+    3. Preserve natural pauses (<5s) for semantic completeness
+    
+    All processing happens in-memory using FFmpeg pipes.
+    """
+    
+    def __init__(
+        self,
+        path: str | Path,
+        *,
+        config: PreprocessingConfig | None = None,
+        chunk_ms: int = 30000,
+    ) -> None:
+        """Initialize preprocessed file source.
+        
+        Args:
+            path: Path to audio file
+            config: Preprocessing configuration (uses defaults if None)
+            chunk_ms: Chunk size for streaming (default: 30000ms = 30s)
+        """
+        self.path = Path(path)
+        self.config = config or PreprocessingConfig()
+        self.chunk_ms = chunk_ms
+    
+    def stream(self) -> Iterable[AudioChunk]:
+        """Stream preprocessed audio chunks.
+        
+        Performs the full preprocessing pipeline:
+        1. VAD analysis to detect speech boundaries and gaps
+        2. FFmpeg-based trimming and splitting
+        3. In-memory streaming of resulting segments
+        
+        Yields:
+            AudioChunk objects from preprocessed segments
+        """
+        from .preprocessing import AudioPreProcessor
+        from .ffmpeg_editor import InMemoryFFmpegEditor
+        from .memory_source import InMemoryAudioSource
+        
+        if not self.path.exists():
+            raise FileNotFoundError(f"Audio file not found: {self.path}")
+        if not self.path.is_file():
+            raise ConfigurationError(f"Path is not a file: {self.path}")
+        
+        # Phase 1: Analyze speech boundaries
+        preprocessor = AudioPreProcessor(self.config)
+        speech_map = preprocessor.analyze_speech_boundaries(self.path)
+        
+        # Phase 2: Trim and split using FFmpeg
+        editor = InMemoryFFmpegEditor()
+        
+        if self.config.split_on_gaps:
+            # Split at significant gaps
+            pcm_segments = editor.trim_and_split_in_memory(
+                self.path,
+                speech_map,
+                head_margin_ms=self.config.head_margin_ms if self.config.trim_head else 0,
+                tail_margin_ms=self.config.tail_margin_ms if self.config.trim_tail else 0,
+            )
+        else:
+            # Just trim, don't split
+            trimmed = editor.trim_only(
+                self.path,
+                speech_map,
+                head_margin_ms=self.config.head_margin_ms if self.config.trim_head else 0,
+                tail_margin_ms=self.config.tail_margin_ms if self.config.trim_tail else 0,
+            )
+            pcm_segments = [trimmed] if trimmed else []
+        
+        # Phase 3: Stream from memory
+        memory_source = InMemoryAudioSource(
+            pcm_segments=pcm_segments,
+            sample_rate=16000,
+            channels=1,
+            chunk_ms=self.chunk_ms,
+        )
+        
+        yield from memory_source.stream()
+
