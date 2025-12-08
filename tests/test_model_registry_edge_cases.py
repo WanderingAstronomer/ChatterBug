@@ -1,8 +1,27 @@
-"""Test model registry edge cases and normalization logic (TDD approach)."""
+"""Test model registry edge cases and normalization logic (TDD approach).
+
+This file consolidates all model registry tests from multiple files to avoid duplication.
+Tests cover: normalization, aliases, edge cases, and full HF name handling.
+"""
 import pytest
 
 from vociferous.domain.model import DEFAULT_WHISPER_MODEL
 from vociferous.engines.model_registry import normalize_model_name
+
+
+def test_normalize_whisper_model_full_name_to_short_format() -> None:
+    """Test that full Hugging Face model names map to faster-whisper short names.
+    
+    Regression test: Model names from config need to be normalized to faster-whisper format.
+    """
+    # Full names should map to short names for faster-whisper compatibility
+    assert normalize_model_name("whisper_turbo", "openai/whisper-large-v3-turbo") == "large-v3-turbo"
+    assert normalize_model_name("whisper_turbo", "openai/whisper-medium") == "medium"
+    assert normalize_model_name("whisper_turbo", "openai/whisper-small") == "small"
+    assert normalize_model_name("whisper_turbo", "openai/whisper-base") == "base"
+    assert normalize_model_name("whisper_turbo", "openai/whisper-tiny") == "tiny"
+    assert normalize_model_name("whisper_turbo", "openai/whisper-large-v3") == "large-v3"
+    assert normalize_model_name("whisper_turbo", "distil-whisper/distil-large-v3") == "distil-large-v3"
 
 
 def test_normalize_model_name_with_none() -> None:
