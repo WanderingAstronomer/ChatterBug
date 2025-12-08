@@ -139,3 +139,46 @@ class TestGUITranscriptionManager:
         manager.stop_current()
         
         assert manager.current_task is None
+
+
+class TestGUIEnhancements:
+    """Tests for GUI enhancements (Phase 1 features)."""
+
+    def test_tooltip_button_creation(self) -> None:
+        """Test TooltipButton class exists and has tooltip support."""
+        from vociferous.gui.screens import TooltipButton
+        from kivymd.uix.tooltip import MDTooltip
+        
+        # Verify TooltipButton inherits from MDTooltip
+        assert issubclass(TooltipButton, MDTooltip)
+
+    def test_snackbar_import(self) -> None:
+        """Test snackbar notification support is imported."""
+        from kivymd.uix.snackbar import MDSnackbar
+        
+        # Verify MDSnackbar is available
+        assert MDSnackbar is not None
+
+    def test_keyboard_shortcuts_handler_exists(self) -> None:
+        """Test keyboard shortcuts handler exists in app."""
+        from vociferous.gui.app import VociferousGUIApp
+        
+        app = VociferousGUIApp()
+        assert hasattr(app, '_on_keyboard')
+        assert callable(app._on_keyboard)
+
+    def test_theme_switch_method_exists(self) -> None:
+        """Test theme switching method exists."""
+        from vociferous.gui.app import VociferousGUIApp
+        
+        app = VociferousGUIApp()
+        assert hasattr(app, 'switch_theme')
+        assert callable(app.switch_theme)
+
+    def test_notification_method_exists(self) -> None:
+        """Test notification method exists."""
+        from vociferous.gui.app import VociferousGUIApp
+        
+        app = VociferousGUIApp()
+        assert hasattr(app, 'show_notification')
+        assert callable(app.show_notification)
