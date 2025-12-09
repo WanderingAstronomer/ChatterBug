@@ -9,7 +9,7 @@ import threading
 import structlog
 
 from vociferous.app import TranscriptionSession
-from vociferous.audio.sources import FileSource
+from vociferous.sources import FileSource
 from vociferous.config import load_config
 from vociferous.domain import EngineConfig, TranscriptionOptions
 from vociferous.domain.model import EngineKind, TranscriptionPreset

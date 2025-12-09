@@ -1,11 +1,11 @@
 import numpy as np
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from vociferous.audio.preprocessing import AudioPreProcessor
 from vociferous.cli.helpers import build_audio_source
 from vociferous.config.schema import AppConfig
 from vociferous.domain.model import PreprocessingConfig
-from vociferous.audio.sources import FileSource, PreprocessedFileSource
+from vociferous.sources import FileSource, MemorySource
 
 
 def _tone(sample_rate: int, duration_ms: int, amplitude: int = 10000) -> np.ndarray:
@@ -18,41 +18,49 @@ def _silence(sample_rate: int, duration_ms: int) -> np.ndarray:
     return np.zeros(samples, dtype=np.int16)
 
 
-def test_analyze_pcm_speech_boundaries_splits_only_on_long_gaps() -> None:
-    sample_rate = 16000
-    config = PreprocessingConfig(gap_threshold_ms=5000)
-    preprocessor = AudioPreProcessor(config)
-
-    pcm = np.concatenate(
-        [
-            _tone(sample_rate, 1000),          # speech
-            _silence(sample_rate, 4000),       # <5s pause should stay merged
-            _tone(sample_rate, 1000),          # speech resumes
-            _silence(sample_rate, 6000),       # >=5s pause should create gap
-            _tone(sample_rate, 1000),          # final speech
-        ],
-        dtype=np.int16,
-    ).tobytes()
-
-    speech_map = preprocessor.analyze_pcm_speech_boundaries(pcm, sample_rate=sample_rate)
-
-    assert len(speech_map.silence_gaps) == 1
-    start_ms, end_ms, duration_ms = speech_map.silence_gaps[0]
-    assert duration_ms >= 5900  # allow small rounding differences around 6s
-    assert start_ms >= 5900 and end_ms >= 11900
-
-
-def test_build_audio_source_uses_preprocessed_when_enabled() -> None:
+def test_build_audio_source_uses_memory_source_when_preprocessing_enabled_with_speech(
+    tmp_path: Path,
+) -> None:
+    """When preprocessing is enabled and speech is detected, returns MemorySource."""
+    # Create a temporary audio file
+    audio_file = tmp_path / "audio.wav"
+    audio_file.write_bytes(b"RIFF" + b"\x00" * 100)  # Dummy content
+    
     cfg = AppConfig(preprocessing_enabled=True, chunk_ms=1234)
-
-    source = build_audio_source(Path("audio.wav"), cfg)
-
-    assert isinstance(source, PreprocessedFileSource)
+    
+    # Mock the classes that are imported inside the function
+    mock_vad_instance = MagicMock()
+    mock_vad_instance.detect_speech.return_value = [{'start': 0.5, 'end': 2.0}]
+    
+    mock_condenser_instance = MagicMock()
+    condensed_file = tmp_path / "condensed.wav"
+    condensed_file.write_bytes(b"RIFF" + b"\x00" * 100)
+    mock_condenser_instance.condense.return_value = [condensed_file]
+    
+    mock_decoder_instance = MagicMock()
+    mock_decoder_instance.decode.return_value = MagicMock(samples=b"\x00\x00" * 1000)
+    
+    # Patch the audio module where the classes are imported from
+    with patch.object(
+        __import__('vociferous.audio', fromlist=['SileroVAD']),
+        'SileroVAD',
+        return_value=mock_vad_instance
+    ), patch.object(
+        __import__('vociferous.audio', fromlist=['FFmpegCondenser']),
+        'FFmpegCondenser',
+        return_value=mock_condenser_instance
+    ), patch.object(
+        __import__('vociferous.audio.decoder', fromlist=['FfmpegDecoder']),
+        'FfmpegDecoder',
+        return_value=mock_decoder_instance
+    ):
+        source = build_audio_source(audio_file, cfg)
+    
+    assert isinstance(source, MemorySource)
     assert source.chunk_ms == cfg.chunk_ms
-    assert source.config.gap_threshold_ms == cfg.preprocessing_gap_threshold_ms
-    assert source.config.split_on_gaps is True
-    assert source.config.head_margin_ms == cfg.preprocessing_head_margin_ms
-    assert source.config.tail_margin_ms == cfg.preprocessing_tail_margin_ms
+    
+    assert isinstance(source, MemorySource)
+    assert source.chunk_ms == cfg.chunk_ms
 
 
 def test_build_audio_source_defaults_to_file_source_when_disabled() -> None:

@@ -5,7 +5,7 @@ from pathlib import Path
 
 from vociferous.engines.whisper_turbo import WhisperTurboEngine
 from vociferous.domain.model import DEFAULT_WHISPER_MODEL, EngineConfig, TranscriptionOptions, AudioChunk
-from vociferous.audio.sources import FileSource
+from vociferous.sources import FileSource
 
 
 def _config(**overrides) -> EngineConfig:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from vociferous.audio.sources import MicrophoneSource
+from vociferous.sources import MicrophoneSource
 from vociferous.audio.recorder import MicrophoneRecorder
 
 

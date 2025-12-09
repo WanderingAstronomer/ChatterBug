@@ -1,6 +1,6 @@
 import pytest
 
-from vociferous.audio.validation import validate_pcm_chunk
+from vociferous.audio.utilities import validate_pcm_chunk
 from vociferous.domain.exceptions import ConfigurationError
 
 

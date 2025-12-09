@@ -1,6 +1,6 @@
 """Tests for SegmentArbiter - segment boundary resolution."""
 
-from vociferous.audio.segment_arbiter import SegmentArbiter
+from vociferous.app.arbiter import SegmentArbiter
 from vociferous.domain.model import TranscriptSegment
 
 

@@ -1,7 +1,7 @@
-"""In-memory audio source for streaming preprocessed audio segments.
+"""MemorySource - Streams pre-processed audio from RAM.
 
-Provides a drop-in replacement for FileSource that streams from RAM
-instead of reading from disk.
+Provides a way to stream audio that has already been processed and loaded
+into memory, such as condensed audio segments.
 """
 
 from __future__ import annotations
@@ -11,11 +11,17 @@ from typing import Iterator
 from vociferous.domain.model import AudioChunk, AudioSource
 
 
-class InMemoryAudioSource(AudioSource):
+class MemorySource(AudioSource):
     """Streams preprocessed audio segments from RAM.
     
     Drop-in replacement for FileSource that operates on in-memory
     PCM segments produced by the preprocessing pipeline.
+    
+    Example:
+        >>> segments = [pcm_bytes_1, pcm_bytes_2]
+        >>> source = MemorySource(segments)
+        >>> for chunk in source.stream():
+        ...     process(chunk)
     """
     
     def __init__(
@@ -31,7 +37,7 @@ class InMemoryAudioSource(AudioSource):
             pcm_segments: List of PCM16 audio segments
             sample_rate: Sample rate of audio (default: 16000)
             channels: Number of channels (default: 1 for mono)
-            chunk_ms: Chunk size in milliseconds (default: 30000ms = 30s)
+            chunk_ms: Chunk size in milliseconds (default: 30000 = 30s)
         """
         self.pcm_segments = pcm_segments
         self.sample_rate = sample_rate
@@ -80,3 +86,7 @@ class InMemoryAudioSource(AudioSource):
             
             # Update global timestamp for next segment
             global_start_s += segment_duration_s
+
+
+# Alias for backward compatibility
+InMemoryAudioSource = MemorySource

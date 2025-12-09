@@ -29,7 +29,7 @@ from vociferous.engines.presets import (
     resolve_preset_name,
 )
 from vociferous.audio.vad import VadWrapper, VadService
-from vociferous.audio.segment_arbiter import SegmentArbiter
+from vociferous.app.arbiter import SegmentArbiter
 
 logger = logging.getLogger(__name__)
 

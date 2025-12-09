@@ -20,7 +20,7 @@ from vociferous.domain.model import (
 )
 from vociferous.engines.model_registry import normalize_model_name
 from vociferous.polish.base import PolisherConfig
-from vociferous.audio.sources import FileSource, PreprocessedFileSource
+from vociferous.sources import FileSource
 
 
 @dataclass
@@ -299,31 +299,74 @@ def build_audio_source(
 ) -> AudioSource:
     """Construct an audio source based on preprocessing settings.
 
-    When preprocessing is enabled, returns a PreprocessedFileSource configured
-    from AppConfig; otherwise falls back to the standard FileSource.
+    When preprocessing is enabled, uses SileroVAD and FFmpegCondenser for
+    intelligent audio preprocessing. Otherwise falls back to standard FileSource.
     """
     preprocessing_enabled = getattr(app_config, "preprocessing_enabled", False)
+    chunk_ms = getattr(app_config, "chunk_ms", 30000)
 
     if preprocessing_enabled:
-        preprocessing_config = PreprocessingConfig(
-            trim_head=getattr(app_config, "preprocessing_trim_head", True),
-            trim_tail=getattr(app_config, "preprocessing_trim_tail", True),
-            head_margin_ms=getattr(app_config, "preprocessing_head_margin_ms", 500),
-            tail_margin_ms=getattr(app_config, "preprocessing_tail_margin_ms", 500),
-            split_on_gaps=getattr(app_config, "preprocessing_split_on_gaps", True),
-            gap_threshold_ms=getattr(app_config, "preprocessing_gap_threshold_ms", 5000),
-            energy_threshold_db=getattr(app_config, "preprocessing_energy_threshold_db", -40.0),
-            min_speech_duration_ms=getattr(app_config, "preprocessing_min_speech_duration_ms", 300),
-            min_silence_duration_ms=getattr(app_config, "preprocessing_min_silence_duration_ms", 500),
-        )
-
-        return PreprocessedFileSource(
+        from vociferous.audio import SileroVAD, FFmpegCondenser
+        from vociferous.sources import MemorySource
+        from vociferous.audio.decoder import FfmpegDecoder
+        
+        # Use new VAD + Condenser pipeline
+        vad = SileroVAD()
+        
+        # Detect speech timestamps
+        threshold = 0.5
+        min_silence_ms = getattr(app_config, "preprocessing_min_silence_duration_ms", 500)
+        min_speech_ms = getattr(app_config, "preprocessing_min_speech_duration_ms", 300)
+        
+        timestamps = vad.detect_speech(
             path,
-            config=preprocessing_config,
-            chunk_ms=getattr(app_config, "chunk_ms", 30000),
+            threshold=threshold,
+            min_silence_ms=min_silence_ms,
+            min_speech_ms=min_speech_ms,
         )
+        
+        if timestamps:
+            # Condense using FFmpegCondenser
+            condenser = FFmpegCondenser()
+            gap_threshold_ms = getattr(app_config, "preprocessing_gap_threshold_ms", 5000)
+            
+            try:
+                condensed_files = condenser.condense(
+                    path,
+                    timestamps,
+                    max_duration_minutes=30,
+                    min_gap_for_split_s=gap_threshold_ms / 1000.0,
+                )
+                
+                if condensed_files:
+                    # Load condensed audio into memory
+                    decoder = FfmpegDecoder()
+                    pcm_segments = []
+                    try:
+                        for condensed_file in condensed_files:
+                            decoded = decoder.decode(str(condensed_file))
+                            pcm_segments.append(decoded.samples)
+                    finally:
+                        # Clean up temporary condensed files
+                        for condensed_file in condensed_files:
+                            try:
+                                condensed_file.unlink(missing_ok=True)
+                            except OSError:
+                                pass  # Ignore cleanup failures
+                    
+                    return MemorySource(
+                        pcm_segments=pcm_segments,
+                        sample_rate=16000,
+                        channels=1,
+                        chunk_ms=chunk_ms,
+                    )
+            except Exception:
+                # Fall through to FileSource if preprocessing fails
+                pass
+        
+        # Fall through to FileSource if no speech detected or condensation failed
 
     return FileSource(
         path,
-        chunk_ms=getattr(app_config, "chunk_ms", 30000),
+        chunk_ms=chunk_ms,
     )

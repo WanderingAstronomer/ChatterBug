@@ -6,7 +6,7 @@ import shutil
 
 from vociferous.app import TranscriptionSession, configure_logging
 from vociferous.app.sinks import PolishingSink
-from vociferous.audio.sources import FileSource
+from vociferous.sources import FileSource
 from vociferous.config import load_config
 from vociferous.config.languages import WHISPER_LANGUAGES, VOXTRAL_CORE_LANGUAGES
 from vociferous.domain.model import TranscriptionPreset, EngineKind

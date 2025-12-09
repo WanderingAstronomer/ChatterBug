@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from vociferous.audio.decoder import AudioDecoder, DecodedAudio
-from vociferous.audio.sources import FileSource
+from vociferous.sources import FileSource
 from vociferous.domain.model import AudioChunk
 
 
