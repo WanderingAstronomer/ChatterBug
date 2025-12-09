@@ -75,6 +75,7 @@ def test_registry_pattern_enables_plugin_architecture():
     class CustomEngine(TranscriptionEngine):
         def __init__(self, config: EngineConfig):
             self.config = config
+            self.model_name = config.model_name
         
         def start(self, options):
             pass

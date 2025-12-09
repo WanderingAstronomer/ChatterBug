@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from pathlib import Path
-from typing import Iterable, List, Mapping
+from typing import Any, Iterable, List, Mapping, cast
 import os
 from unittest.mock import MagicMock
 
@@ -12,6 +12,7 @@ import numpy as np
 from vociferous.domain.model import (
     DEFAULT_MODEL_CACHE_DIR,
     DEFAULT_WHISPER_MODEL,
+    AudioChunk,
     EngineConfig,
     EngineMetadata,
     TranscriptSegment,
@@ -23,6 +24,7 @@ from vociferous.engines.model_registry import normalize_model_name
 from vociferous.engines.hardware import get_optimal_device, get_optimal_compute_type
 from vociferous.engines.presets import (
     WHISPER_TURBO_PRESETS,
+    WhisperPreset,
     get_preset_config,
     resolve_preset_name,
 )
@@ -37,6 +39,32 @@ def _bool_param(params: Mapping[str, str], key: str, default: bool) -> bool:
     if raw is None:
         return default
     return str(raw).strip().lower() == "true"
+
+
+def _float_setting(cfg: WhisperPreset, key: str, default: float) -> float:
+    raw = cfg.get(key)
+    if raw is None:
+        return default
+    if isinstance(raw, (int, float)):
+        return float(raw)
+    try:
+        return float(str(raw))
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_setting(cfg: WhisperPreset, key: str, default: int) -> int:
+    raw = cfg.get(key)
+    if raw is None:
+        return default
+    if isinstance(raw, bool):  # Avoid treating bools as ints
+        return default
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    try:
+        return int(str(raw))
+    except (TypeError, ValueError):
+        return default
 
 
 class WhisperTurboEngine(TranscriptionEngine):
@@ -58,7 +86,7 @@ class WhisperTurboEngine(TranscriptionEngine):
             or config.model_name == DEFAULT_WHISPER_MODEL
         )
         target_model = preset_cfg.get("model_name") if use_preset_model else config.model_name
-        self.model_name = normalize_model_name("whisper_turbo", str(target_model))
+        self.model_name = normalize_model_name("whisper_turbo", target_model)
 
         # Hardware-aware defaults
         self.device = config.device if config.device != "auto" else get_optimal_device()
@@ -68,12 +96,13 @@ class WhisperTurboEngine(TranscriptionEngine):
             else self._resolve_precision(self.preset, self.device)
         )
 
-        cache_root = Path(config.model_cache_dir or DEFAULT_MODEL_CACHE_DIR).expanduser()
+        cache_root_value = config.model_cache_dir or DEFAULT_MODEL_CACHE_DIR
+        cache_root = Path(cache_root_value).expanduser()
         cache_root.mkdir(parents=True, exist_ok=True)
         self.cache_dir = cache_root
 
-        self._model = None
-        self._pipeline = None
+        self._model: Any | None = None
+        self._pipeline: Any | None = None
         # Use injected VAD or create default VadWrapper with GPU acceleration
         self._vad: VadService = vad if vad is not None else VadWrapper(device=self.device)
 
@@ -94,8 +123,8 @@ class WhisperTurboEngine(TranscriptionEngine):
 
         # Configurable parameters (could be in config.params)
         # Use larger window on GPU; VAD-based splitting prevents mid-word truncation
-        preset_window = float(preset_cfg.get("window_sec", 30.0 if self.device == "cuda" else 12.0))
-        preset_hop = float(preset_cfg.get("hop_sec", 4.0))
+        preset_window = _float_setting(preset_cfg, "window_sec", 30.0 if self.device == "cuda" else 12.0)
+        preset_hop = _float_setting(preset_cfg, "hop_sec", 4.0)
         self.window_sec = float(params.get("window_sec", preset_window))
         self.hop_sec = float(params.get("hop_sec", preset_hop))
         self.min_emit_sec = float(params.get("min_emit_sec", 1.0))
@@ -112,8 +141,10 @@ class WhisperTurboEngine(TranscriptionEngine):
         self.vad_speech_pad_ms = int(params.get("vad_speech_pad_ms", 180))
         neg_default = max(0.0, self.vad_threshold - 0.15)
         self.vad_neg_threshold = float(params.get("vad_neg_threshold", neg_default))
-        self.default_beam_size = int(params.get("default_beam_size", preset_cfg.get("beam_size", 1) or 1))
-        self.default_temperature = float(params.get("default_temperature", preset_cfg.get("temperature", 0.0)))
+        beam_default = _int_setting(preset_cfg, "beam_size", 1)
+        self.default_beam_size = int(params.get("default_beam_size", beam_default))
+        temp_default = _float_setting(preset_cfg, "temperature", 0.0)
+        self.default_temperature = float(params.get("default_temperature", temp_default))
         self.sample_rate = 16000
         self.bytes_per_sample = 2  # PCM16 = 2 bytes per sample
         # Prevent OOM: max buffer size (60 seconds ≈ 1.83MB for 16kHz mono PCM16)
@@ -139,7 +170,7 @@ class WhisperTurboEngine(TranscriptionEngine):
 
     def _resolve_precision(self, preset: str, device: str) -> str:
         preset_cfg = get_preset_config(preset, WHISPER_TURBO_PRESETS, "balanced")
-        precision_map = preset_cfg.get("precision", {}) if preset_cfg else {}
+        precision_map = preset_cfg.get("precision") or {}
         if device in precision_map:
             return str(precision_map[device])
         if "default" in precision_map:
@@ -206,9 +237,11 @@ class WhisperTurboEngine(TranscriptionEngine):
         except ImportError:
             pass
         else:
-            ct_lib_dir = (Path(ctranslate2.__file__).resolve().parent.parent / "ctranslate2.libs").resolve()
-            if ct_lib_dir.exists():
-                lib_dirs.append(str(ct_lib_dir))
+            ct_file = getattr(ctranslate2, "__file__", None)
+            if ct_file:
+                ct_lib_dir = (Path(ct_file).resolve().parent.parent / "ctranslate2.libs").resolve()
+                if ct_lib_dir.exists():
+                    lib_dirs.append(str(ct_lib_dir))
 
         if not lib_dirs:
             return
@@ -255,7 +288,7 @@ class WhisperTurboEngine(TranscriptionEngine):
 
     # Backward-compatibility for pull-based API used in legacy tests
     def transcribe_stream(
-        self, chunks: Iterable["AudioChunk"], options: TranscriptionOptions
+        self, chunks: Iterable[AudioChunk], options: TranscriptionOptions
     ) -> Iterable[TranscriptSegment]:
         self.start(options)
         for chunk in chunks:
@@ -293,8 +326,9 @@ class WhisperTurboEngine(TranscriptionEngine):
         return segs
 
     def _maybe_process(self, force: bool) -> None:
-        if not self._options or not self._model:
+        if self._options is None or self._model is None:
             return
+        options = self._options
 
         bytes_per_sec = self.sample_rate * self.bytes_per_sample
         min_bytes = int(self.min_emit_sec * bytes_per_sec)
@@ -363,7 +397,7 @@ class WhisperTurboEngine(TranscriptionEngine):
                     text=text,
                     start_s=self._stream_offset_s + s.start,  # Add cumulative offset
                     end_s=self._stream_offset_s + s.end,      # Add cumulative offset
-                    language=self._options.language,
+                    language=options.language,
                     confidence=getattr(s, "avg_logprob", 0.0)
                 )
             )
@@ -385,12 +419,18 @@ class WhisperTurboEngine(TranscriptionEngine):
             self._buffer.clear()
 
     def _transcribe(self, audio_np: np.ndarray):
-        beam_size = self._options.beam_size if self._options.beam_size is not None else self.default_beam_size
-        temperature = (
-            self._options.temperature if self._options.temperature is not None else self.default_temperature
-        )
+        if self._options is None:
+            raise RuntimeError("Engine options not initialized")
+        if self._model is None:
+            raise RuntimeError("Model not loaded")
+
+        options = self._options
+        model = self._model
+
+        beam_size = options.beam_size if options.beam_size is not None else self.default_beam_size
+        temperature = options.temperature if options.temperature is not None else self.default_temperature
         kwargs = {
-            "language": self._options.language,
+            "language": options.language,
             "vad_filter": self.vad_filter,
             "word_timestamps": self.word_timestamps,
             "best_of": 1,
@@ -399,22 +439,23 @@ class WhisperTurboEngine(TranscriptionEngine):
             kwargs["beam_size"] = beam_size
         if temperature is not None:
             kwargs["temperature"] = temperature
-        if self._options.prompt:
-            kwargs["initial_prompt"] = self._options.prompt
+        if options.prompt:
+            kwargs["initial_prompt"] = options.prompt
 
         try:
-            use_pipeline = self.enable_batching and self._pipeline is not None
-            if use_pipeline and isinstance(self._model, MagicMock) and not isinstance(self._pipeline, MagicMock):
+            pipeline = self._pipeline
+            use_pipeline = self.enable_batching and pipeline is not None
+            if use_pipeline and isinstance(model, MagicMock) and not isinstance(pipeline, MagicMock):
                 # Avoid real pipeline path when using MagicMock model doubles (tests)
                 use_pipeline = False
 
-            if use_pipeline:
+            if use_pipeline and pipeline is not None:
                 # BatchedInferencePipeline accepts batch_size
                 kwargs["batch_size"] = self.batch_size
-                result = self._pipeline.transcribe(audio_np, **kwargs)
+                result = pipeline.transcribe(audio_np, **kwargs)
             else:
                 # WhisperModel.transcribe does not accept batch_size
-                result = self._model.transcribe(audio_np, **kwargs)
+                result = model.transcribe(audio_np, **kwargs)
         except Exception as exc:  # pragma: no cover - exercised via tests
             raise RuntimeError(str(exc)) from exc
 

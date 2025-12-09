@@ -77,6 +77,8 @@ class VadWrapper:
 
             self.model = model
             self.utils = utils
+            if self.model is None:
+                return
             if (
                 self._torch is not None
                 and device == "cuda"
@@ -188,7 +190,7 @@ class VadWrapper:
         return spans
 
     @staticmethod
-    def _try_import_torch() -> "torch_mod | None":
+    def _try_import_torch() -> Any | None:
         try:
             import torch as torch_mod  # type: ignore
         except ImportError:

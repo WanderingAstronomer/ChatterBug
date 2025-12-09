@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 from vociferous.domain.model import (
     DEFAULT_MODEL_CACHE_DIR,
@@ -34,8 +35,11 @@ class VoxtralLocalEngine(TranscriptionEngine):
         cache_root = Path(config.model_cache_dir or DEFAULT_MODEL_CACHE_DIR).expanduser()
         cache_root.mkdir(parents=True, exist_ok=True)
         self.cache_dir = cache_root
-        self._model = None
-        self._processor = None
+        self._model: Any | None = None
+        self._processor: Any | None = None
+        self._options: TranscriptionOptions | None = None
+        self._buffer: bytearray = bytearray()
+        self._segments: list[TranscriptSegment] = []
 
     def _lazy_model(self):
         if self._model is not None:
@@ -75,6 +79,10 @@ class VoxtralLocalEngine(TranscriptionEngine):
     def flush(self) -> None:
         if not self._buffer:
             return
+        if self._options is None:
+            raise RuntimeError("Options not initialized")
+        if self._processor is None or self._model is None:
+            raise RuntimeError("Model not loaded")
 
         import numpy as np
         import torch
@@ -82,16 +90,20 @@ class VoxtralLocalEngine(TranscriptionEngine):
         # Process audio efficiently
         audio_np = np.frombuffer(self._buffer, dtype=np.int16).astype("float32") / 32768.0
 
-        inputs = self._processor.apply_transcription_request(
+        options = self._options
+        processor = self._processor
+        model = self._model
+
+        inputs = processor.apply_transcription_request(
             audio=[audio_np],
-            language=self._options.language or "en",
+            language=options.language or "en",
             model_id=self.model_name,
             sampling_rate=16000,
             format=["wav"],
-        ).to(self.device, dtype=self._model.dtype)
+        ).to(self.device, dtype=model.dtype)
 
         gen_kwargs = {}
-        params = self._options.params
+        params = options.params
         if "max_new_tokens" in params:
             gen_kwargs["max_new_tokens"] = int(params["max_new_tokens"])
         else:
@@ -100,11 +112,11 @@ class VoxtralLocalEngine(TranscriptionEngine):
         # Note: temperature is not supported for Voxtral transcription mode
 
         with torch.inference_mode():
-            outputs = self._model.generate(**inputs, **gen_kwargs)
+            outputs = model.generate(**inputs, **gen_kwargs)
 
         input_length = inputs.input_ids.shape[1]
         new_tokens = outputs[:, input_length:]
-        transcription = self._processor.batch_decode(
+        transcription = processor.batch_decode(
             new_tokens, skip_special_tokens=True
         )[0]
 
@@ -113,7 +125,7 @@ class VoxtralLocalEngine(TranscriptionEngine):
                 text=transcription.strip(),
                 start_s=0.0,
                 end_s=len(audio_np) / 16000.0,
-                language=self._options.language or "en",
+                language=options.language or "en",
                 confidence=1.0
             ))
 

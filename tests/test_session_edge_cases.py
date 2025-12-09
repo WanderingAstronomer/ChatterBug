@@ -1,10 +1,11 @@
 """Test TranscriptionSession edge cases and error handling (TDD approach)."""
 import pytest
-from typing import Iterable
+from typing import Iterator
 
 from vociferous.app.transcription_session import TranscriptionSession
 from vociferous.domain.model import (
     AudioChunk,
+    EngineConfig,
     TranscriptSegment,
     TranscriptionEngine,
     TranscriptionOptions,
@@ -19,7 +20,7 @@ class ErrorSource:
     def __init__(self, error: Exception):
         self.error = error
 
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         raise self.error
 
 
@@ -28,6 +29,8 @@ class ErrorEngine(TranscriptionEngine):
 
     def __init__(self, error: Exception):
         self.error = error
+        self.config = EngineConfig()
+        self.model_name = "test-model"
 
     def start(self, options: TranscriptionOptions) -> None:
         raise self.error
@@ -54,7 +57,7 @@ class SlowSource:
         self.count = count
         self.delay_s = delay_s
 
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         import time
 
         for i in range(self.count):
@@ -87,13 +90,15 @@ class CountingSink:
 
 
 class FakeSource:
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         yield AudioChunk(samples=b"test", sample_rate=16000, channels=1, start_s=0.0, end_s=0.1)
 
 
 class FakeEngine(TranscriptionEngine):
     def __init__(self):
         self._segments: list[TranscriptSegment] = []
+        self.config = EngineConfig()
+        self.model_name = "test-model"
 
     def start(self, options: TranscriptionOptions) -> None:
         self._segments.clear()
@@ -263,6 +268,9 @@ def test_session_error_propagates_to_join() -> None:
     class ErrorDuringIterationEngine(TranscriptionEngine):
         """Engine that raises error during push."""
 
+        config = EngineConfig()
+        model_name = "test-model"
+
         def start(self, options: TranscriptionOptions) -> None:
             self._raised = False
 
@@ -301,6 +309,9 @@ def test_session_handles_empty_transcription() -> None:
     """Test session handles case where no segments are produced."""
 
     class EmptyEngine(TranscriptionEngine):
+        config = EngineConfig()
+        model_name = "test-model"
+
         def start(self, options: TranscriptionOptions) -> None:
             self._segments: list[TranscriptSegment] = []
 

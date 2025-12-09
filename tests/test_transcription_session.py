@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterator
 
 from vociferous.app import TranscriptionSession
 from vociferous.app.sinks import PolishingSink
 from vociferous.domain.model import (
     AudioChunk,
+    EngineConfig,
     EngineMetadata,
     TranscriptSegment,
     TranscriptionEngine,
@@ -14,13 +15,15 @@ from vociferous.domain.model import (
 
 
 class FakeSource:
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         yield AudioChunk(samples=b"", sample_rate=16000, channels=1, start_s=0.0, end_s=0.1)
 
 
 class FakeEngine(TranscriptionEngine):
     def __init__(self):
         self._segments: list[TranscriptSegment] = []
+        self.config = EngineConfig()
+        self.model_name = "test-model"
 
     def start(self, options: TranscriptionOptions) -> None:
         self._segments.clear()

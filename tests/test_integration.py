@@ -3,12 +3,13 @@ import pytest
 import threading
 import time
 from pathlib import Path
-from typing import Iterable, List
+from typing import Iterator, List
 
 from vociferous.app.transcription_session import TranscriptionSession
 from vociferous.domain.model import (
     AudioChunk,
     AudioSource,
+    EngineConfig,
     TranscriptSegment,
     TranscriptionEngine,
     TranscriptionOptions,
@@ -24,7 +25,7 @@ class SlowAudioSource(AudioSource):
         self.num_chunks = num_chunks
         self.chunk_delay_s = chunk_delay_s
     
-    def stream(self) -> Iterable[AudioChunk]:
+    def stream(self) -> Iterator[AudioChunk]:
         for i in range(self.num_chunks):
             if self.chunk_delay_s > 0:
                 time.sleep(self.chunk_delay_s)
@@ -45,6 +46,8 @@ class FakeTranscriptionEngine(TranscriptionEngine):
     def __init__(self, transcript_per_chunk: str = "word"):
         self.transcript_per_chunk = transcript_per_chunk
         self._segments: List[TranscriptSegment] = []
+        self.config = EngineConfig()
+        self.model_name = "fake-model"
     
     def start(self, options: TranscriptionOptions) -> None:
         self._segments.clear()
@@ -169,7 +172,7 @@ def test_integration_buffer_overflow_handling() -> None:
     class FastProducerSource(AudioSource):
         """Source that produces audio faster than it can be processed."""
         
-        def stream(self) -> Iterable[AudioChunk]:
+        def stream(self) -> Iterator[AudioChunk]:
             for i in range(500):  # Produce many chunks quickly
                 fake_pcm = b"\x00\x01" * 1600
                 yield AudioChunk(
@@ -185,6 +188,8 @@ def test_integration_buffer_overflow_handling() -> None:
         
         def __init__(self):
             self._segments: List[TranscriptSegment] = []
+            self.config = EngineConfig()
+            self.model_name = "slow-engine"
         
         def start(self, options: TranscriptionOptions) -> None:
             self._segments.clear()
@@ -242,7 +247,7 @@ def test_integration_empty_source() -> None:
     """Test handling of an empty audio source."""
     
     class EmptySource(AudioSource):
-        def stream(self) -> Iterable[AudioChunk]:
+        def stream(self) -> Iterator[AudioChunk]:
             return iter([])
     
     session = TranscriptionSession()

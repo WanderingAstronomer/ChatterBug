@@ -20,12 +20,21 @@ Key differences:
 - Batch size: fast=16 (throughput), high_accuracy=8 (careful), balanced=12 (middle)
 """
 
-from typing import Mapping
+from typing import Mapping, TypedDict
 
 from vociferous.domain.model import DEFAULT_WHISPER_MODEL
 
+
+class WhisperPreset(TypedDict, total=False):
+    model_name: str
+    precision: Mapping[str, str]
+    beam_size: int
+    temperature: float
+    window_sec: float
+    hop_sec: float
+
 # Default CT2 Whisper presets shared across engines
-WHISPER_TURBO_PRESETS: Mapping[str, dict[str, object]] = {
+WHISPER_TURBO_PRESETS: Mapping[str, WhisperPreset] = {
     # Default: large-v3-turbo CT2, FP16 on CUDA, INT8 on CPU
     "balanced": {
         "model_name": DEFAULT_WHISPER_MODEL,
@@ -78,6 +87,6 @@ def resolve_preset_name(
     return custom_label, True
 
 
-def get_preset_config(name: str, presets: Mapping[str, dict[str, object]], fallback: str) -> dict[str, object]:
+def get_preset_config(name: str, presets: Mapping[str, WhisperPreset], fallback: str) -> WhisperPreset:
     """Fetch a preset config with a safe fallback."""
     return presets.get(name) or presets[fallback]

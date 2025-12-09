@@ -1,0 +1,13 @@
+{
+  "include": ["vociferous", "tests"],
+  "exclude": [
+    "vociferous/gui",
+    "vociferous/polish",
+    "**/.venv/**",
+    "future_planned",
+    "Planning and Documentation"
+  ],
+  "reportMissingImports": "none",
+  "reportMissingTypeStubs": "none",
+  "pythonVersion": "3.11"
+}
