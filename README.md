@@ -76,11 +76,50 @@ vociferous transcribe interview.wav -p high_accuracy -o transcript.txt
 - History: JSONL-backed history stored under `~/.cache/vociferous/history/history.jsonl`.
 
 ## CLI Usage
+
+### Getting Help
+
+Vociferous provides two help modes to serve different audiences:
+
+**User Help (`--help`)** - Shows essential commands for everyday transcription:
+```bash
+vociferous --help
+```
+Displays: `transcribe`, `languages`, `check` - everything most users need.
+
+**Developer Help (`--dev-help`)** - Shows all commands including low-level debugging tools:
+```bash
+vociferous --dev-help
+```
+Displays: All user commands PLUS `decode`, `vad`, `condense`, `record`, and other components for manual pipeline construction.
+
+**When to use each:**
+- New user? Start with `vociferous --help` to see the essentials.
+- Need to debug or understand internals? Use `vociferous --dev-help` to see all components.
+- Building custom pipelines? Use `--dev-help` to access low-level tools.
+
+### Main Commands
+
 - `vociferous transcribe <file>` - Transcribe audio file to stdout. Common flags: `-e`/`--engine`, `-l`/`--language`, `-o`/`--output`, `-p`/`--preset`.
   - Example: `vociferous transcribe recording.wav -e voxtral_local -o transcript.txt`
 - `vociferous languages` - List all supported language codes (ISO 639-1) for Whisper and Voxtral engines.
 - `vociferous check` - Verify local prerequisites (ffmpeg, sounddevice).
 - `vociferous-gui` - Launch the graphical user interface (requires `[gui]` extra).
+
+### Developer Commands (accessible via `--dev-help`)
+
+For manual pipeline debugging and component-level control:
+- `vociferous decode <file>` - Normalize audio to PCM mono 16kHz
+- `vociferous vad <wav>` - Detect speech boundaries and output timestamps
+- `vociferous condense <timestamps> <wav>` - Remove silence using VAD timestamps
+- `vociferous record` - Capture microphone audio
+- `vociferous transcribe-full <file>` - Full pipeline with all preprocessing steps
+- `vociferous transcribe-canary <file>` - Transcribe using Canary-Qwen engine
+
+**Note:** Most users should use `transcribe` instead of manual component chaining. Developer commands are for debugging and understanding the internals.
+
+### Command Options
+
 - `-e|--engine whisper_turbo|voxtral_local` - Select engine.
 - `-p|--preset high_accuracy|balanced|fast`; `--fast` shortcut for `preset=fast`.
 - `-l|--language <code>` - Language code (e.g., `en`, `es`, `fr`) or `auto` for detection. See `vociferous languages` for full list.

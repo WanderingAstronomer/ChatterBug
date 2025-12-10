@@ -103,12 +103,52 @@ No cloud. No telemetry. Local engines only.
     add_completion=False,  # Hide completion commands
 )
 cli_app = app  # alias for embedding
-register_decode(app)
-register_vad(app)
-register_condense(app)
-register_record(app)
-register_transcribe_full(app)
-register_transcribe_canary(app)
+
+# ============================================================================
+# COMMAND REGISTRATION
+# ============================================================================
+# This section registers all CLI commands. Commands are organized into two tiers
+# for the planned two-tier help system (see ARCHITECTURE.md):
+#
+# USER TIER (--help):
+#   - High-level workflows: transcribe
+#   - Utilities: languages, check
+#   - Commands 90% of users need for everyday transcription
+#
+# DEVELOPER TIER (--dev-help):
+#   - All user-tier commands PLUS:
+#   - Low-level audio components: decode, vad, condense, record
+#   - Alternative workflows: transcribe-full, transcribe-canary
+#   - Manual pipeline debugging tools
+#
+# CATEGORIZATION CRITERIA:
+#   - If users need to understand internal pipeline → Developer tier
+#   - If users just want results without internals → User tier
+#
+# CURRENT STATUS (December 2025):
+#   - Commands use rich_help_panel for visual grouping
+#   - "Core Commands" = user-facing workflows
+#   - "Utilities" = user-facing helpers
+#   - "Audio Components" = developer-facing low-level tools
+#
+# FUTURE IMPLEMENTATION (Issue #15):
+#   - Add --dev-help flag handling
+#   - Use `hidden=True` on developer commands for default help
+#   - Filter visible commands based on help flag
+# ============================================================================
+
+# Developer-tier: Audio processing components (manual pipeline debugging)
+register_decode(app)        # rich_help_panel="Audio Components"
+register_vad(app)           # rich_help_panel="Audio Components"
+register_condense(app)      # rich_help_panel="Audio Components"
+register_record(app)        # rich_help_panel="Audio Components"
+
+# Developer-tier: Alternative workflow commands
+register_transcribe_full(app)    # Full preprocessing pipeline
+register_transcribe_canary(app)  # Canary-Qwen engine
+
+# User-tier commands are defined below: transcribe, languages, check
+
 
 
 @app.callback(invoke_without_command=True)
@@ -139,6 +179,13 @@ def main_callback(ctx: typer.Context) -> None:
     console.print("[dim]Tip: run 'vociferous --help' for the full command list.[/dim]")
     raise typer.Exit(code=0)
 
+
+# ============================================================================
+# USER-TIER COMMANDS
+# ============================================================================
+# These commands appear in both --help and --dev-help.
+# They represent the primary user-facing interface.
+# ============================================================================
 
 @app.command(rich_help_panel="Core Commands")
 def transcribe(

@@ -649,6 +649,214 @@ def transcribe_file(self, audio_path: Path):
     # ... code
 ```
 
+## CLI Design - Two-Tier Help System
+
+### **Philosophy: User Convenience vs Developer Transparency**
+
+**Problem:**
+
+- End users want simple, focused commands for everyday transcription tasks
+- Developers need access to low-level components for debugging and manual pipeline execution
+- Showing all commands in default help creates clutter and overwhelms new users
+
+**Solution:** Two separate help flags targeting different audiences.
+
+---
+
+### **`--help` (User-Facing)**
+
+Shows only high-level commands for typical use cases.
+
+**Target Audience:** End users who want to transcribe audio files.
+
+**Commands Included:**
+
+- `transcribe` - Main transcription workflow (audio → text)
+- `languages` - List supported language codes
+- `check` - Verify system prerequisites (ffmpeg, dependencies)
+
+**Example Output:**
+
+```bash
+$ vociferous --help
+
+Usage: vociferous [OPTIONS] COMMAND
+
+Vociferous - Local-first AI transcription
+
+Commands:
+  transcribe  Transcribe audio file to text
+  languages   List supported language codes
+  check       Verify system prerequisites
+
+Options:
+  --help      Show this message and exit
+  --dev-help  Show developer commands
+
+Run 'vociferous COMMAND --help' for more information on a command.
+```
+
+**Design Goal:** Keep it simple - users see only what they need for daily work.
+
+---
+
+### **`--dev-help` (Developer-Facing)**
+
+Shows all components including low-level debugging tools.
+
+**Target Audience:** Developers debugging issues, building custom pipelines, or understanding internals.
+
+**Commands Included:**
+
+**Audio Components:**
+- `decode` - Normalize audio to PCM mono 16kHz
+- `vad` - Detect speech boundaries (Voice Activity Detection)
+- `condense` - Remove silence using VAD timestamps
+- `record` - Capture microphone audio
+
+**Workflow Commands:**
+- `transcribe` - Main transcription workflow
+- `transcribe-full` - Full pipeline with all preprocessing
+- `transcribe-canary` - Canary-Qwen engine transcription
+
+**Utilities:**
+- `languages` - List supported language codes
+- `check` - Verify system prerequisites
+
+**Example Output:**
+
+```bash
+$ vociferous --dev-help
+
+Usage: vociferous [OPTIONS] COMMAND
+
+Vociferous - Developer Commands
+(For debugging and manual pipeline construction)
+
+Audio Components:
+  decode     Normalize audio to PCM mono 16kHz
+  vad        Detect speech boundaries
+  condense   Remove silence using VAD timestamps
+  record     Capture microphone audio
+
+Workflow Commands:
+  transcribe       Main transcription workflow
+  transcribe-full  Full pipeline with preprocessing
+  transcribe-canary Canary-Qwen engine transcription
+
+Utilities:
+  languages  List supported language codes
+  check      Verify system prerequisites
+
+Options:
+  --help      Show user commands (simplified)
+  --dev-help  Show this developer help
+
+Note: These low-level components allow manual pipeline debugging.
+      Most users should use 'transcribe' instead.
+```
+
+**Design Goal:** Full transparency - developers see everything.
+
+---
+
+### **Command Categorization Criteria**
+
+**User Help (`--help`) includes:**
+
+- ✅ High-level workflows (transcribe audio → get text)
+- ✅ Configuration/setup utilities (languages, check)
+- ✅ Commands 90% of users need
+- ❌ No low-level components
+- ❌ No manual pipeline steps
+
+**Developer Help (`--dev-help`) includes:**
+
+- ✅ All commands from user help
+- ✅ Low-level audio processing components (decode, vad, condense)
+- ✅ Alternative engines/workflows (transcribe-canary, transcribe-full)
+- ✅ Recording and capture tools
+- ✅ Everything needed for manual debugging
+
+**Decision Rule:**
+
+> *If a user needs to understand the internal pipeline to use it → Developer Help*  
+> *If a user just wants results without internal knowledge → User Help*
+
+---
+
+### **Implementation Notes**
+
+**Current Status (as of December 2025):**
+
+The CLI currently uses `rich_help_panel` in Typer to organize commands into visual groups:
+
+- `"Core Commands"` - Main workflows (transcribe)
+- `"Utilities"` - Helper commands (languages, check)
+- `"Audio Components"` - Low-level components (decode, vad, condense)
+
+**Future Implementation (Issue #15):**
+
+The two-tier help system will be implemented by:
+
+1. Adding custom `--dev-help` flag handling in the main CLI callback
+2. Filtering visible commands based on which help flag is used
+3. Using Typer's command metadata to mark commands as "user" or "developer"
+4. Preserving the existing `rich_help_panel` for visual organization
+
+**Code Pattern for Categorizing Commands:**
+
+```python
+# User-facing command (appears in --help)
+@app.command(
+    rich_help_panel="Core Commands",
+    hidden=False,  # Visible in default help
+)
+def transcribe(...):
+    """Transcribe audio file to text."""
+    pass
+
+# Developer-facing command (only in --dev-help)
+@app.command(
+    rich_help_panel="Audio Components",
+    hidden=True,  # Hidden from default help, shown in --dev-help
+)
+def decode(...):
+    """Normalize audio to PCM mono 16kHz."""
+    pass
+```
+
+**Testing Requirements:**
+
+- `vociferous --help` must show only user commands
+- `vociferous --dev-help` must show all commands
+- Both help outputs must be clear and well-organized
+- Command descriptions must be appropriate for their audience
+
+---
+
+### **User Experience Goals**
+
+**For New Users:**
+
+- See 3-5 essential commands, not 10+
+- Understand "what can I do?" in 5 seconds
+- Get hint about developer commands without overwhelming
+
+**For Developers:**
+
+- Access all components for debugging
+- Understand component responsibilities
+- Manually chain pipeline steps when needed
+
+**For Everyone:**
+
+- Consistent command naming and behavior
+- Clear error messages explaining what went wrong
+- Discoverable features through progressive disclosure
+
+---
+
 ## Summary: Core Tenets
 
 1. **Components over monoliths** - Every meaningful unit must be independently executable
