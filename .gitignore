@@ -1,6 +1,6 @@
 # Changes and Improvement plans
-CHANGES.md
 Planning and Documentation/IMPROVEMENT_PLAN.md
+CHANGES.md
 
 # Dev Diary
 Dev Diary - Vociferous.md
@@ -152,6 +152,15 @@ dmypy.json
 *.flac
 *.ogg
 *.m4a
+# Allow committed fixtures under tests
+!tests/**/samples/**
+!tests/**/artifacts/**
+
+# Project samples (keep local/untracked)
+samples/
+
+# Local debug artifacts
+debug_output/
 
 # Model files (if large)
 *.pt
@@ -171,6 +180,3 @@ output/
 # Test artifacts (keep structure, ignore files)
 tests/*/artifacts/*
 !tests/*/artifacts/.gitkeep
-
-# Sample files
-samples/
