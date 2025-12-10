@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-import sys
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[2]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 from vociferous.domain.model import EngineConfig, TranscriptionOptions
 from vociferous.engines.canary_qwen import CanaryQwenEngine
 
@@ -46,4 +41,4 @@ def test_canary_qwen_refine_text() -> None:
     refined = engine.refine_text("hello world")
 
     assert refined[0].isupper()
-    assert refined.rstrip().endswith(".") or refined.rstrip().endswith("!") or refined.rstrip().endswith("?")
+    assert refined.rstrip().endswith((".", "!", "?"))

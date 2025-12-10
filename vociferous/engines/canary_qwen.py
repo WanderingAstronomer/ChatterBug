@@ -38,27 +38,36 @@ class CanaryQwenEngine(TranscriptionEngine):
         self._options: TranscriptionOptions | None = None
         self._model: Any | None = None
         self._processor: Any | None = None
+        self._pending_text: str = ""
+        self._last_timestamp_ms: int = 0
 
     # Streaming protocol -------------------------------------------------
     def start(self, options: TranscriptionOptions) -> None:
         self._options = options
         self._buffer = bytearray()
         self._segments = []
+        self._pending_text = ""
         if not self.use_mock:
             self._lazy_model()
 
-    def push_audio(self, pcm16: bytes, timestamp_ms: int) -> None:  # noqa: ARG002
+    def push_audio(self, pcm16: bytes, timestamp_ms: int) -> None:
         self._buffer.extend(pcm16)
+        self._last_timestamp_ms = timestamp_ms
 
     def flush(self) -> None:
-        if self._segments:
-            return
         if self.mode == "llm":
-            text = self.refine_text(self._buffer.decode("utf-8", errors="ignore"))
+            text_input = self._pending_text.strip()
+            if not text_input:
+                return
+            text = self.refine_text(text_input)
             duration_s = 0.0
+            self._pending_text = ""
         else:
+            if not self._buffer:
+                return
             text = self._transcribe_bytes(self._buffer)
             duration_s = self._estimate_duration(self._buffer)
+            self._buffer = bytearray()
 
         language = self._options.language if self._options else "en"
         segment = TranscriptSegment(
@@ -85,7 +94,7 @@ class CanaryQwenEngine(TranscriptionEngine):
 
     # Convenience methods -----------------------------------------------
     def transcribe_file(self, audio_path: Path, options: TranscriptionOptions) -> list[TranscriptSegment]:
-        pcm_bytes = audio_path.read_bytes()
+        pcm_bytes = self._load_audio_bytes(audio_path)
         self.start(options)
         self.push_audio(pcm_bytes, 0)
         self.flush()
@@ -101,7 +110,10 @@ class CanaryQwenEngine(TranscriptionEngine):
         if not cleaned:
             return ""
         # Minimal refinement: ensure sentence-style output.
-        refined = cleaned[0].upper() + cleaned[1:]
+        if len(cleaned) == 1:
+            refined = cleaned.upper()
+        else:
+            refined = cleaned[0].upper() + cleaned[1:]
         if not refined.rstrip().endswith((".", "!", "?")):
             refined = refined.rstrip() + "."
         if self.use_mock:
@@ -111,6 +123,10 @@ class CanaryQwenEngine(TranscriptionEngine):
             return decorated
         return refined
 
+    def set_text_input(self, text: str) -> None:
+        """Provide text directly for LLM-only mode without touching audio buffers."""
+        self._pending_text = text or ""
+
     # Internals ---------------------------------------------------------
     def _lazy_model(self) -> None:
         if self._model is not None or self.use_mock:
@@ -118,16 +134,21 @@ class CanaryQwenEngine(TranscriptionEngine):
         try:
             from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor  # pragma: no cover - optional
             import torch  # pragma: no cover - optional
-        except Exception:  # pragma: no cover - dependency guard
+        except ImportError:  # pragma: no cover - dependency guard
             self.use_mock = True
             return
 
-        self._processor = AutoProcessor.from_pretrained(self.model_name)
-        self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
-            self.model_name,
-            torch_dtype=self._resolve_dtype(torch, self.precision),
-        )
-        self._model.to(self.device if self.device != "auto" else "cpu")
+        try:
+            self._processor = AutoProcessor.from_pretrained(self.model_name)
+            self._model = AutoModelForSpeechSeq2Seq.from_pretrained(
+                self.model_name,
+                torch_dtype=self._resolve_dtype(torch, self.precision),
+            )
+            self._model.to(self.device if self.device != "auto" else "cpu")
+        except Exception:  # pragma: no cover - optional guard
+            self.use_mock = True
+            self._processor = None
+            self._model = None
 
     def _transcribe_bytes(self, data: bytes) -> str:
         if not data:
@@ -137,8 +158,12 @@ class CanaryQwenEngine(TranscriptionEngine):
             return f"Canary-Qwen mock transcript (~{duration:.1f}s of audio)"
 
         import torch  # pragma: no cover - optional heavy path
+        import numpy as np  # pragma: no cover - optional heavy path
 
-        array = torch.tensor(list(data), dtype=torch.float32) / 32768.0
+        samples = np.frombuffer(data, dtype=np.int16).astype("float32")
+        max_val = float(np.iinfo(np.int16).max)
+        samples = samples / (max_val + 1.0)
+        array = torch.from_numpy(samples)
         inputs = self._processor(array, sampling_rate=16000, return_tensors="pt")
         inputs = {k: v.to(self._model.device) for k, v in inputs.items()}
         with torch.no_grad():
@@ -146,11 +171,21 @@ class CanaryQwenEngine(TranscriptionEngine):
         transcription = self._processor.batch_decode(generated_ids, skip_special_tokens=True)
         return transcription[0] if transcription else ""
 
+    def _load_audio_bytes(self, audio_path: Path) -> bytes:
+        try:
+            import wave
+
+            with wave.open(str(audio_path), "rb") as wf:
+                return wf.readframes(wf.getnframes())
+        except Exception:
+            return audio_path.read_bytes()
+
     @staticmethod
     def _estimate_duration(data: bytes, sample_rate: int = 16000) -> float:
         if not data:
             return 0.0
-        samples = len(data) / 2  # pcm16
+        # PCM16 audio stores one sample per 2 bytes.
+        samples = len(data) / 2
         return float(samples) / float(sample_rate)
 
     @staticmethod

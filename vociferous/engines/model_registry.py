@@ -25,6 +25,19 @@ CANARY_MODELS: Dict[str, str] = {
     "nvidia/canary-qwen-2.5b": "nvidia/canary-qwen-2.5b",
 }
 
+
+def _is_invalid_canary_model(name: str, default: str | None) -> bool:
+    if not name:
+        return True
+    if name in CANARY_MODELS or str(name).startswith("nvidia/canary"):
+        return False
+    if name in VOXTRAL_MODELS or name in WHISPER_MODELS:
+        return True
+    if default and name == default:
+        return False
+    return True
+
+
 _DEFAULTS = {
     "whisper_turbo": DEFAULT_WHISPER_MODEL,
     "voxtral": "mistralai/Voxtral-Mini-3B-2507",  # Legacy alias, maps to voxtral_local
@@ -86,7 +99,7 @@ def normalize_model_name(kind: EngineKind, name: str | None) -> str:
             if name in VOXTRAL_MODELS or name.startswith("mistralai/"):
                 name = default or ""
         elif kind == "canary_qwen":
-            if name in VOXTRAL_MODELS or name in WHISPER_MODELS:
+            if _is_invalid_canary_model(name, default):
                 name = default or ""
 
         alias = _ALIASES.get(kind, {})

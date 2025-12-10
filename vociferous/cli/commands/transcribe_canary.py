@@ -51,5 +51,3 @@ def register_transcribe_canary(app: typer.Typer) -> None:
             typer.echo(f"✓ Saved transcript to {output}")
         else:
             typer.echo(final_text)
-
-    return None
