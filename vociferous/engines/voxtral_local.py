@@ -163,7 +163,6 @@ class VoxtralLocalEngine(TranscriptionEngine):
         if self._processor is None or self._model is None:
             raise RuntimeError("Model not loaded")
 
-        import numpy as np
         import torch
 
         # Load audio file
@@ -181,7 +180,7 @@ class VoxtralLocalEngine(TranscriptionEngine):
         ).to(self.device, dtype=model.dtype)
 
         gen_kwargs = {}
-        params = options.params
+        params = options.params or {}
         if "max_new_tokens" in params:
             gen_kwargs["max_new_tokens"] = int(params["max_new_tokens"])
         else:
@@ -210,6 +209,9 @@ class VoxtralLocalEngine(TranscriptionEngine):
     
     def _load_audio_file(self, audio_path: Path) -> np.ndarray:
         """Load audio file and convert to numpy array for transcription.
+        
+        Note: This method is duplicated in both WhisperTurboEngine and VoxtralLocalEngine
+        to keep engines independent. Future refactoring could extract to shared utility.
         
         Args:
             audio_path: Path to audio file (should be 16kHz mono PCM WAV)

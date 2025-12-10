@@ -505,6 +505,9 @@ class WhisperTurboEngine(TranscriptionEngine):
     def _load_audio_file(self, audio_path: Path) -> np.ndarray:
         """Load audio file and convert to numpy array for transcription.
         
+        Note: This method is duplicated in both WhisperTurboEngine and VoxtralLocalEngine
+        to keep engines independent. Future refactoring could extract to shared utility.
+        
         Args:
             audio_path: Path to audio file (should be 16kHz mono PCM WAV)
             
