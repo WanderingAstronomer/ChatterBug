@@ -21,6 +21,7 @@ Local-first ASR with faster-whisper (CTranslate2) as the default engine and an o
 ### Engines
 - **`whisper_turbo`** (default): CTranslate2-based faster-whisper engine. Fast, accurate, runs offline. Best for general use.
 - **`voxtral_local`**: Mistral-based transformer with smart punctuation and grammar. Requires `[voxtral]` extra. Slower but produces more natural text.
+- **`canary_qwen`**: Lightweight dual-pass (ASR + optional refinement) path using Canary-Qwen 2.5B. Defaults to a mock, dependency-light mode for local testing.
 - **`parakeet_rnnt`**: NVIDIA Parakeet RNNT via Riva endpoint (optional). Experimental streaming support.
 
 Engines are stateful and push-based: `start()` → `push_audio()` → `flush()` → `poll_segments()`; the CLI orchestrates via `TranscriptionSession`.
