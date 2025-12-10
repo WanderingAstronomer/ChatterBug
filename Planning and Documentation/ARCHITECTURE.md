@@ -8,10 +8,10 @@
 
 | Module | Status | Notes |
 |--------|--------|-------|
-| **audio** | ✅ Implemented | decode, vad, condense, record components working |
+| **audio** | ✅ Implemented | Audio primitives (decoder, vad, condenser, recorder) |
 | **engines** | 🚧 In Progress | Canary dual-pass implementation ongoing (Issue #9) |
 | **refinement** | 🚧 In Progress | Replacing polish module; depends on Canary LLM mode (Issues #8, #10) |
-| **cli** | ✅ Implemented | Commands live; refactoring help tiers (Issue #15) |
+| **cli** | ✅ Implemented | Commands and interface adapters (cli.components) |
 | **app** | 🚧 In Progress | Removing TranscriptionSession/Arbiter; workflow function in progress (Issues #5, #6, #7) |
 | **config** | ✅ Implemented | Config loading and management working |
 | **domain** | ✅ Implemented | Core types, models, exceptions defined |
@@ -26,6 +26,7 @@
 - [x] Audio preprocessing pipeline (decode, vad, condense, record)
 - [x] Real-file contract testing philosophy (no mocks)
 - [x] Module-based test organization
+- [x] Move CLI adapter components to cli.components (separation of concerns)
 
 **In Progress:**
 - [ ] Canary-Qwen dual-pass architecture (Issue #9)
@@ -446,10 +447,10 @@ Vociferous is organized into **9 modules**, each with a clear responsibility and
 
 | Module | Purpose | CLI Components? | Key Responsibilities |
 |--------|---------|-----------------|---------------------|
-| **audio** | Audio preprocessing pipeline | ✅ Yes | Decode, VAD, condense, record |
+| **audio** | Audio processing primitives | ❌ No (primitives only) | FfmpegDecoder, SileroVAD, FFmpegCondenser, SoundDeviceRecorder |
 | **engines** | Speech-to-text conversion | ❌ No (infrastructure) | Canary-Qwen (default), Whisper Turbo, Voxtral |
 | **refinement** | Text post-processing via Canary LLM pass | ❌ No (internal, future CLI `refine`) | Grammar/punctuation refinement, prompt handling |
-| **cli** | Command-line interface entrypoints | ✅ Yes (workflow commands only) | Typer commands, argument parsing, help system |
+| **cli** | Command-line interface | ✅ Yes | Typer commands, argument parsing, help system, interface adapters (cli.components) |
 | **app** | Workflow orchestration | ❌ No | Transparent workflow functions (no sessions, no arbiters) |
 | **config** | Configuration management | ❌ No | Settings, defaults, config file handling |
 | **domain** | Core domain models & protocols | ❌ No | Typed data structures, contracts, errors |
@@ -459,16 +460,17 @@ Vociferous is organized into **9 modules**, each with a clear responsibility and
 **Notes:**
 - Engines and refinement are infrastructure invoked by workflows and components; they are not exposed as standalone CLI commands.
 - The `app` module coordinates workflows explicitly—there is **no** `TranscriptionSession` or `SegmentArbiter`.
+- **Audio module contains only primitives** (decoder, VAD, condenser, recorder classes); **CLI adapters** (DecoderComponent, VADComponent, etc.) are in `cli.components`.
 
 ### **Module Organization Principles**
 
-**1. CLI-Accessible Components (audio module)**
+**1. CLI-Accessible Commands (via cli.components)**
 
 These components can be invoked directly from the command line:
-- `vociferous decode` - Audio format normalization
-- `vociferous vad` - Voice activity detection
-- `vociferous condense` - Silence removal
-- `vociferous record` - Microphone capture
+- `vociferous decode` - Audio format normalization (DecoderComponent)
+- `vociferous vad` - Voice activity detection (VADComponent)
+- `vociferous condense` - Silence removal (CondenserComponent)
+- `vociferous record` - Microphone capture (RecorderComponent)
 
 **2. Infrastructure Modules (engines, refinement)**
 
@@ -696,8 +698,9 @@ Modules fall into four architectural categories:
 
 | If you're implementing... | It belongs in... | NOT in... |
 | --- | --- | --- |
-| Audio format conversion | `audio` | ❌ `engines`, ❌ `app` |
-| Speech detection (VAD) | `audio` | ❌ `engines`, ❌ `cli` |
+| Audio format conversion (primitive) | `audio` | ❌ `engines`, ❌ `app` |
+| Speech detection (VAD primitive) | `audio` | ❌ `engines`, ❌ `cli` |
+| File-IO adapter for audio primitives | `cli.components` | ❌ `audio`, ❌ `app` |
 | Transcription algorithm | `engines` | ❌ `audio`, ❌ `app` |
 | Text grammar fixes | `refinement` | ❌ `engines`, ❌ `audio` |
 | Command parsing | `cli` | ❌ `app`, ❌ `audio` |
@@ -773,7 +776,7 @@ vociferous condense timestamps.json audio.wav  # ✅ Component
 vociferous record                 # ✅ Component
 ```
 
-Recorder component implementation lives in `vociferous/audio/components/recorder_component.py` and wraps the low-level `SoundDeviceRecorder` defined in `vociferous/audio/recorder.py`.
+Recorder component implementation lives in `vociferous/cli/components/recorder.py` and wraps the low-level `SoundDeviceRecorder` primitive defined in `vociferous/audio/recorder.py`.
 
 **cli module (workflows):**
 ```bash
@@ -1127,7 +1130,7 @@ Commit messages must follow this structure and be limited to a single affected f
 **Example:**
 
 ```markdown
-[CREATE]: vociferous/audio/components/vad.py, tests/components/test_vad_contract.py
+[CREATE]: vociferous/cli/components/vad.py, tests/audio/test_vad_contract.py
 
 **Changes:**
 
