@@ -513,7 +513,7 @@ engine = EngineFactory.create("canary_qwen")
 segments = engine.transcribe_file(audio_path)
 ```
 
-**Why?** Engines are infrastructure called by workflows, not standalone components. The `transcribe` workflow components expose this functionality to users.
+**Why?** Engines are infrastructure called by workflows, not standalone components. The `transcribe-full` and `transcribe-canary` workflow components (in the cli module) expose this functionality to users.
 
 **config module:**
 ```python
@@ -540,10 +540,12 @@ audio_data = source.read()
 **polish module:**
 ```python
 # ❌ NOT directly callable via CLI
-# ✅ Called by workflows when --refine flag is used
+# ✅ Called by transcribe-full workflow when --polish flag is used
 polisher = PolisherFactory.create(config)
 polished_text = polisher.polish(raw_transcript)
 ```
+
+**Note:** The `transcribe-canary` command has a separate `--refine` flag that uses the Canary-Qwen engine's built-in LLM refinement, which is different from the polish module.
 
 **storage module:**
 ```python
