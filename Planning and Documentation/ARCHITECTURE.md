@@ -344,6 +344,255 @@ segments = engine.transcribe(condensed)
 
 ---
 
+## Module Architecture
+
+### **What is a Module?**
+
+**Definition:** A module is a logical collection of related functionality that serves a specific architectural purpose. Not all modules need CLI-accessible components - some provide infrastructure (config, domain), orchestration (app), or interfaces (cli, gui).
+
+**Key Characteristics:**
+- **Cohesive Purpose:** All code in a module serves a unified architectural goal
+- **Clear Boundaries:** Modules interact through well-defined interfaces
+- **Varying Accessibility:** Some modules expose CLI components, others provide internal infrastructure
+
+---
+
+### **Complete Module Inventory**
+
+| Module | Purpose | Contains Components? | Key Responsibilities |
+| --- | --- | --- | --- |
+| **audio** | Audio preprocessing | ✅ Yes | Decode, VAD, condense, record - prepares audio for transcription |
+| **engines** | Speech-to-text transcription | ❌ No* | Canary-Qwen, Whisper engines - called by workflows, not directly via CLI |
+| **polish** | Text post-processing | ❌ No | Grammar/punctuation refinement (rule-based or LLM-based polishing) |
+| **cli** | Command-line interface | ✅ Yes | Typer commands, argument parsing, user interaction |
+| **app** | Workflow orchestration | ❌ No | Pipeline coordination, session management, config resolution |
+| **config** | Configuration management | ❌ No | Load/validate settings from files and CLI arguments |
+| **domain** | Core types and contracts | ❌ No | Models, exceptions, protocols, constants |
+| **sources** | Audio input sources | ❌ No | File readers, memory buffers, microphone capture |
+| **gui** | Graphical interface | ❌ No | KivyMD application, screens, UI components |
+| **storage** | Persistence layer | ❌ No | Session history, transcription repository |
+
+***Note:** Engines are not directly CLI-accessible. They are infrastructure called by the `transcribe` workflow components.*
+
+---
+
+### **Module Categories**
+
+Modules fall into four architectural categories:
+
+#### **1. Processing Modules**
+- **audio**: Transforms raw audio into standardized, preprocessed files
+- **engines**: Converts preprocessed audio into text transcripts
+- **polish**: Refines raw transcripts into polished text
+
+**Characteristic:** These modules perform domain transformations (audio → text → polished text)
+
+#### **2. Interface Modules**
+- **cli**: Command-line user interface
+- **gui**: Graphical user interface
+
+**Characteristic:** These modules expose functionality to users but don't contain business logic
+
+#### **3. Infrastructure Modules**
+- **config**: Manages system configuration
+- **domain**: Defines core types and contracts
+- **sources**: Provides audio input abstractions
+- **storage**: Handles persistence
+
+**Characteristic:** These modules provide foundational services used by other modules
+
+#### **4. Orchestration Modules**
+- **app**: Coordinates workflows and manages execution
+
+**Characteristic:** This module composes components from other modules into complete workflows
+
+---
+
+### **Module Boundaries and Interactions**
+
+#### **What Belongs Where**
+
+| If you're implementing... | It belongs in... | NOT in... |
+| --- | --- | --- |
+| Audio format conversion | `audio` | ❌ `engines`, ❌ `app` |
+| Speech detection (VAD) | `audio` | ❌ `engines`, ❌ `cli` |
+| Transcription algorithm | `engines` | ❌ `audio`, ❌ `app` |
+| Text grammar fixes | `polish` | ❌ `engines`, ❌ `audio` |
+| Command parsing | `cli` | ❌ `app`, ❌ `audio` |
+| Pipeline coordination | `app` | ❌ `cli`, ❌ `engines` |
+| Configuration loading | `config` | ❌ `cli`, ❌ `app` |
+| Data models | `domain` | ❌ Any specific module |
+| File/microphone input | `sources` | ❌ `audio`, ❌ `cli` |
+| UI screens | `gui` | ❌ `cli`, ❌ `app` |
+| Session history | `storage` | ❌ `app`, ❌ `engines` |
+
+#### **Module Interaction Flow**
+
+```mermaid
+graph TD
+    CLI[cli Module]
+    GUI[gui Module]
+    APP[app Module]
+    CFG[config Module]
+    SRC[sources Module]
+    AUD[audio Module]
+    ENG[engines Module]
+    POL[polish Module]
+    DOM[domain Module]
+    STO[storage Module]
+
+    CLI --> APP
+    GUI --> APP
+    APP --> CFG
+    APP --> SRC
+    APP --> AUD
+    APP --> ENG
+    APP --> POL
+    APP --> STO
+    
+    AUD --> DOM
+    ENG --> DOM
+    POL --> DOM
+    SRC --> DOM
+    STO --> DOM
+    CFG --> DOM
+
+    style CLI fill:#e1f5ff
+    style GUI fill:#e1f5ff
+    style APP fill:#fff4e1
+    style AUD fill:#e8f5e9
+    style ENG fill:#e8f5e9
+    style POL fill:#e8f5e9
+    style CFG fill:#f3e5f5
+    style DOM fill:#f3e5f5
+    style SRC fill:#f3e5f5
+    style STO fill:#f3e5f5
+```
+
+**Data Flow Example:**
+```
+User Input (cli/gui) 
+  → app orchestrates workflow
+  → sources provides audio input
+  → audio preprocesses (decode → VAD → condense)
+  → engines transcribes
+  → polish refines text
+  → storage persists results
+  → app returns to user interface
+```
+
+---
+
+### **Infrastructure vs Components Distinction**
+
+**Critical Understanding:** Not all modules need CLI-accessible components.
+
+#### **Modules WITH Components (CLI-accessible)**
+
+**audio module:**
+```bash
+vociferous decode audio.mp3       # ✅ Component
+vociferous vad audio.wav          # ✅ Component  
+vociferous condense timestamps.json audio.wav  # ✅ Component
+vociferous record                 # ✅ Component
+```
+
+**cli module:**
+```bash
+vociferous transcribe-full audio.mp3  # ✅ Component (workflow)
+vociferous transcribe-canary audio.mp3  # ✅ Component (workflow)
+```
+
+#### **Modules WITHOUT Components (Infrastructure)**
+
+**engines module:**
+```python
+# ❌ NOT directly callable via CLI
+# ✅ Called by app orchestration layer
+engine = EngineFactory.create("canary_qwen")
+segments = engine.transcribe_file(audio_path)
+```
+
+**Why?** Engines are infrastructure called by workflows, not standalone components. The `transcribe` workflow components expose this functionality to users.
+
+**config module:**
+```python
+# ❌ NOT a component
+# ✅ Infrastructure used by all modules
+config = load_config()
+```
+
+**domain module:**
+```python
+# ❌ NOT a component
+# ✅ Core types used everywhere
+segment = TranscriptSegment(text="...", start=0.0, end=1.0)
+```
+
+**sources module:**
+```python
+# ❌ NOT a component
+# ✅ Infrastructure providing input abstractions
+source = FileSource(path)
+audio_data = source.read()
+```
+
+**polish module:**
+```python
+# ❌ NOT directly callable via CLI
+# ✅ Called by workflows when --refine flag is used
+polisher = PolisherFactory.create(config)
+polished_text = polisher.polish(raw_transcript)
+```
+
+**storage module:**
+```python
+# ❌ NOT a component
+# ✅ Infrastructure for persistence
+history.save_session(session)
+```
+
+**gui module:**
+```python
+# ❌ NOT CLI-accessible (different interface type)
+# ✅ Alternative user interface
+app = VociferousGUI()
+app.run()
+```
+
+---
+
+### **Module Design Guidelines**
+
+When adding functionality, ask:
+
+1. **Which module's purpose does this serve?**
+   - Audio transformation → `audio`
+   - Transcription → `engines`
+   - Text refinement → `polish`
+   - User interaction → `cli` or `gui`
+   - Workflow coordination → `app`
+   - Configuration → `config`
+   - Core types → `domain`
+   - Input handling → `sources`
+   - Persistence → `storage`
+
+2. **Does it need to be a CLI component?**
+   - Independently testable operation → Consider making it a component
+   - Infrastructure/helper → Keep it as internal module functionality
+   - Workflow coordination → Keep in `app`, expose via `cli` component
+
+3. **What are its dependencies?**
+   - Depends on specific module → It might belong in that module
+   - Used by multiple modules → Consider `domain` or infrastructure module
+   - Orchestrates multiple modules → Belongs in `app`
+
+4. **Is it independently verifiable?**
+   - Yes, produces observable output → Strong candidate for component
+   - No, internal transformation → Keep as module internal
+
+---
+
 ## Batch vs Streaming
 
 ### **Design Decision: Batch Processing**
