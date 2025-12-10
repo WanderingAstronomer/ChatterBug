@@ -49,6 +49,7 @@ class SileroVAD:
         min_silence_ms: int = 500,
         min_speech_ms: int = 250,
         save_json: bool = False,
+        output_path: Path | None = None,
     ) -> list[dict[str, float]]:
         """Analyze audio and return speech timestamps.
         
@@ -58,6 +59,7 @@ class SileroVAD:
             min_silence_ms: Minimum silence duration to end a speech segment
             min_speech_ms: Minimum speech duration to be considered speech
             save_json: If True, writes timestamps to JSON cache file
+            output_path: Optional explicit path for saved JSON
             
         Returns:
             List of dicts with 'start' and 'end' keys (values in seconds)
@@ -92,8 +94,12 @@ class SileroVAD:
             })
         
         # Optionally save to JSON cache
-        if save_json:
-            cache_path = audio_path.with_name(f"{audio_path.stem}_vad_timestamps.json")
+        if save_json or output_path is not None:
+            cache_path = (
+                Path(output_path)
+                if output_path is not None
+                else audio_path.with_name(f"{audio_path.stem}_vad_timestamps.json")
+            )
             with open(cache_path, 'w') as f:
                 json.dump(timestamps, f, indent=2)
         

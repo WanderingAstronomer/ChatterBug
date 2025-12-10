@@ -16,6 +16,13 @@ from vociferous.domain.exceptions import (
 from vociferous.engines.factory import build_engine
 from vociferous.polish.factory import build_polisher
 from vociferous.cli.helpers import build_audio_source, build_sink, build_transcribe_configs_from_cli
+from vociferous.cli.commands import (
+    register_decode,
+    register_vad,
+    register_condense,
+    register_record,
+    register_transcribe_full,
+)
 
 try:
     import typer
@@ -95,6 +102,11 @@ No cloud. No telemetry. Local engines only.
     add_completion=False,  # Hide completion commands
 )
 cli_app = app  # alias for embedding
+register_decode(app)
+register_vad(app)
+register_condense(app)
+register_record(app)
+register_transcribe_full(app)
 
 
 @app.callback(invoke_without_command=True)
@@ -109,9 +121,10 @@ def main_callback(ctx: typer.Context) -> None:
         "No cloud. No telemetry."
         "\n\n"
         "[bold]Quick start[/bold]\n"
-        "  - vociferous transcribe audio.mp3\n"
-        "  - vociferous transcribe audio.wav -e voxtral_local\n"
-        "  - vociferous transcribe audio.flac -l es\n"
+        "  - vociferous decode audio.mp3\n"
+        "  - vociferous vad audio_decoded.wav\n"
+        "  - vociferous condense audio_decoded_vad_timestamps.json audio_decoded.wav\n"
+        "  - vociferous transcribe-full audio.mp3\n"
         "\n"
         "[bold]More help[/bold]\n"
         "  - vociferous transcribe --help\n"

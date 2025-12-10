@@ -1,1 +1,0 @@
-"""Sources module tests."""
