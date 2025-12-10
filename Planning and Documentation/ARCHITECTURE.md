@@ -372,7 +372,7 @@ segments = engine.transcribe(condensed)
 | **gui** | Graphical interface | ❌ No | KivyMD application, screens, UI components |
 | **storage** | Persistence layer | ❌ No | Session history, transcription repository |
 
-***Note:** Engines are not directly CLI-accessible. They are infrastructure called by the `transcribe` workflow components.*
+**\*Note:** Engines are not directly CLI-accessible. They are infrastructure called by the `transcribe` workflow components.
 
 ---
 
@@ -513,7 +513,7 @@ engine = EngineFactory.create("canary_qwen")
 segments = engine.transcribe_file(audio_path)
 ```
 
-**Why?** Engines are infrastructure called by workflows, not standalone components. The `transcribe-full` and `transcribe-canary` workflow components (in the cli module) expose this functionality to users.
+**Why?** Engines are infrastructure called by workflows, not standalone components. The `transcribe-full` and `transcribe-canary` CLI commands expose this functionality to users.
 
 **config module:**
 ```python
