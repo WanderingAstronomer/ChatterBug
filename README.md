@@ -19,12 +19,41 @@ Local-first ASR with faster-whisper (CTranslate2) as the default engine and an o
 ## Engines and Presets
 
 ### Engines
-- **`whisper_turbo`** (default): CTranslate2-based faster-whisper engine. Fast, accurate, runs offline. Best for general use.
-- **`voxtral_local`**: Mistral-based transformer with smart punctuation and grammar. Requires `[voxtral]` extra. Slower but produces more natural text.
-- **`canary_qwen`**: Dual-pass (ASR + optional refinement) using Canary-Qwen 2.5B. Defaults to a mock, dependency-light mode; set `use_mock=false` and install `transformers` + `torch` to run the real model. See `docs/engines/canary_qwen.md` for details.
-- **`parakeet_rnnt`**: NVIDIA Parakeet RNNT via Riva endpoint (optional). Experimental streaming support.
 
-Engines are stateful and push-based: `start()` → `push_audio()` → `flush()` → `poll_segments()`; the CLI orchestrates via `TranscriptionSession`.
+All engines use a simple batch interface - complete audio file in, complete transcript out.
+
+- **`whisper_turbo`** (default): Batch processing via CTranslate2. Fast, accurate, runs offline. Best for general use.
+- **`voxtral_local`**: Batch processing via transformers. Mistral-based with smart punctuation and grammar. Requires `[voxtral]` extra. Slower but produces more natural text.
+- **`canary_qwen`**: Batch processing with dual-pass (ASR + optional refinement) using Canary-Qwen 2.5B. Defaults to a mock, dependency-light mode; set `use_mock=false` and install `transformers` + `torch` to run the real model. See `docs/engines/canary_qwen.md` for details.
+- **`parakeet_rnnt`**: NVIDIA Parakeet RNNT via Riva endpoint (optional, experimental). Note: This engine uses a different architecture for real-time applications.
+
+### Engine Interface
+
+Engines use a simple batch interface:
+
+```python
+segments = engine.transcribe_file(audio_path)
+```
+
+The engine receives a preprocessed audio file (decoded, VAD-filtered, silence removed) and returns the complete transcript in one operation.
+
+### Audio Pipeline
+
+Before transcription, audio is preprocessed in stages:
+
+1. **Decode:** Normalize to PCM mono 16kHz
+2. **VAD:** Detect speech boundaries
+3. **Condense:** Remove silence
+4. **Transcribe:** Engine receives clean, condensed audio
+
+Each stage is batch processing - complete file in, complete file out.
+
+### Why Batch Processing?
+
+- User submits complete audio files (not live streams)
+- ML models work best on complete audio
+- Simpler architecture (no state management)
+- Easier to test and debug
 
 ### Quality Presets (`whisper_turbo` engine)
 Control the speed/quality tradeoff with `-p/--preset`:

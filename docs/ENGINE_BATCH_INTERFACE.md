@@ -75,9 +75,11 @@ for seg in clean_segments:
 - ✅ SegmentArbiter deduplicates and merges
 - ✅ Output: Clean, non-overlapping segments
 
-## Legacy Streaming Interface
+## Legacy Streaming Interface (Deprecated)
 
-The old streaming interface (`start()`, `push_audio()`, `flush()`, `poll_segments()`) is still available for backward compatibility, but the new batch interface is recommended for preprocessed audio.
+The old streaming interface (`start()`, `push_audio()`, `flush()`, `poll_segments()`) may still exist in some engines for backward compatibility during the refactoring transition (see issue #21), but **batch processing is the recommended and supported approach** for all use cases. The streaming interface adds unnecessary complexity and is being phased out.
+
+**Use the batch interface (`transcribe_file()`) for all new code.**
 
 ## SegmentArbiter Configuration
 
