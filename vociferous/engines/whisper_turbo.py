@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import wave
 from pathlib import Path
 from typing import Any, Iterable, List, Mapping, cast
 import os
@@ -28,10 +29,12 @@ from vociferous.engines.presets import (
     get_preset_config,
     resolve_preset_name,
 )
-from vociferous.audio.vad import VadWrapper, VadService
 from vociferous.app.arbiter import SegmentArbiter
 
 logger = logging.getLogger(__name__)
+
+# Audio format constants
+PCM16_SCALE = 32768.0  # Normalization scale for 16-bit PCM audio
 
 
 def _bool_param(params: Mapping[str, str], key: str, default: bool) -> bool:
@@ -69,10 +72,14 @@ def _int_setting(cfg: WhisperPreset, key: str, default: int) -> int:
 
 class WhisperTurboEngine(TranscriptionEngine):
     """
-    Stateful, push-based faster-whisper adapter with VAD and buffering.
+    Stateful, push-based faster-whisper adapter with buffering.
+    
+    Note: Internal VAD has been removed. Audio should be preprocessed 
+    (decoded, VAD'd, condensed) before being passed to the engine.
+    For batch processing of preprocessed files, use transcribe_file().
     """
 
-    def __init__(self, config: EngineConfig, vad: VadService | None = None) -> None:
+    def __init__(self, config: EngineConfig) -> None:
         self.config = config
         params = {k.lower(): v for k, v in (config.params or {}).items()}
 
@@ -103,8 +110,6 @@ class WhisperTurboEngine(TranscriptionEngine):
 
         self._model: Any | None = None
         self._pipeline: Any | None = None
-        # Use injected VAD or create default VadWrapper with GPU acceleration
-        self._vad: VadService = vad if vad is not None else VadWrapper(device=self.device)
 
         # Buffering state
         self._buffer = bytearray()
@@ -119,37 +124,24 @@ class WhisperTurboEngine(TranscriptionEngine):
         self.batch_size = max(1, batch_default)
         self.word_timestamps = _bool_param(params, "word_timestamps", False)
         self.clean_disfluencies = _bool_param(params, "clean_disfluencies", True)
-        self.vad_filter = _bool_param(params, "vad_filter", False)
 
         # Configurable parameters (could be in config.params)
-        # Use larger window on GPU; VAD-based splitting prevents mid-word truncation
+        # Use larger window on GPU
         preset_window = _float_setting(preset_cfg, "window_sec", 30.0 if self.device == "cuda" else 12.0)
         preset_hop = _float_setting(preset_cfg, "hop_sec", 4.0)
         self.window_sec = float(params.get("window_sec", preset_window))
         self.hop_sec = float(params.get("hop_sec", preset_hop))
         self.min_emit_sec = float(params.get("min_emit_sec", 1.0))
-        # Conversation research (Roberts & Francis 2013; Dingemanse & Liesenfeld 2022) shows tolerable gaps up to ~1.2s;
-        # default to 1.2s so we avoid cutting healthy pauses while still splitting on real silence.
-        self.min_silence_ms = int(params.get("silence_gap_ms", 1200))
-        # Keep a short pad after last voiced region to avoid truncating trailing phonemes.
-        self.tail_pad_ms = int(params.get("tail_pad_ms", 220))
-        # Lower VAD threshold to be less aggressive with quiet speech.
-        self.vad_threshold = float(params.get("vad_threshold", 0.32))
-        # Advanced VAD tuning mapped to silero get_speech_timestamps
-        self.vad_min_silence_ms = int(params.get("vad_min_silence_ms", 1100))
-        self.vad_min_speech_ms = int(params.get("vad_min_speech_ms", 500))
-        self.vad_speech_pad_ms = int(params.get("vad_speech_pad_ms", 180))
-        neg_default = max(0.0, self.vad_threshold - 0.15)
-        self.vad_neg_threshold = float(params.get("vad_neg_threshold", neg_default))
-        beam_default = _int_setting(preset_cfg, "beam_size", 1)
-        self.default_beam_size = int(params.get("default_beam_size", beam_default))
-        temp_default = _float_setting(preset_cfg, "temperature", 0.0)
-        self.default_temperature = float(params.get("default_temperature", temp_default))
         self.sample_rate = 16000
         self.bytes_per_sample = 2  # PCM16 = 2 bytes per sample
         # Prevent OOM: max buffer size (60 seconds ≈ 1.83MB for 16kHz mono PCM16)
         self.max_buffer_sec = float(params.get("max_buffer_sec", 60.0))
         self.max_buffer_bytes = int(self.max_buffer_sec * self.sample_rate * self.bytes_per_sample)
+
+        beam_default = _int_setting(preset_cfg, "beam_size", 1)
+        self.default_beam_size = int(params.get("default_beam_size", beam_default))
+        temp_default = _float_setting(preset_cfg, "temperature", 0.0)
+        self.default_temperature = float(params.get("default_temperature", temp_default))
 
         # Segment arbiter configuration (disabled by default since VAD is off)
         self.use_segment_arbiter = _bool_param(params, "use_segment_arbiter", False)
@@ -344,51 +336,14 @@ class WhisperTurboEngine(TranscriptionEngine):
         # Always consume from the head to preserve chronology
         audio_chunk = bytes(self._buffer[:process_bytes])
 
-        # Use VAD to find speech spans and cut at natural gaps/pads (only if VAD enabled)
-        spans = []
-        if self.vad_filter:
-            spans = self._vad.speech_spans(
-                audio_chunk,
-                threshold=self.vad_threshold,
-                neg_threshold=self.vad_neg_threshold,
-                min_silence_ms=self.vad_min_silence_ms,
-                min_speech_ms=self.vad_min_speech_ms,
-                speech_pad_ms=self.vad_speech_pad_ms,
-            )
-
-        def samples_to_bytes(samples: int) -> int:
-            return samples * 2
-
-        split_bytes = None
-        tail_bytes = process_bytes
-
-        if spans:
-            # Detect a decent silence gap to split on; cut after previous speech + pad to avoid mid-word truncation
-            from itertools import pairwise
-
-            pad_samples = int((self.tail_pad_ms / 1000) * self.sample_rate)
-            for prev, curr in pairwise(spans):
-                gap_samples = curr[0] - prev[1]
-                gap_ms = (gap_samples / self.sample_rate) * 1000
-                if gap_ms >= self.min_silence_ms:
-                    split_point = prev[1] + pad_samples
-                    split_bytes = samples_to_bytes(min(split_point, process_bytes))
-                    break
-
-            # Trim trailing silence to avoid hallucinations; keep a small pad
-            tail_samples = spans[-1][1] + pad_samples
-            tail_bytes = min(process_bytes, samples_to_bytes(tail_samples))
-
-        # Decide how much to consume this round
-        consume_bytes = tail_bytes
-        if split_bytes is not None:
-            consume_bytes = min(consume_bytes, split_bytes)
+        # Determine how much to consume this round
+        consume_bytes = process_bytes
 
         if consume_bytes < min_bytes and not force:
             return
 
         audio_for_model = audio_chunk[:consume_bytes]
-        audio_np = np.frombuffer(audio_for_model, dtype=np.int16).astype(np.float32) / 32768.0
+        audio_np = np.frombuffer(audio_for_model, dtype=np.int16).astype(np.float32) / PCM16_SCALE
         segments, _ = self._transcribe(audio_np)
 
         # Convert to TranscriptSegment with stream-relative timestamps
@@ -433,7 +388,7 @@ class WhisperTurboEngine(TranscriptionEngine):
         temperature = options.temperature if options.temperature is not None else self.default_temperature
         kwargs = {
             "language": options.language,
-            "vad_filter": self.vad_filter,
+            "vad_filter": False,  # Always False - preprocessing handles VAD
             "word_timestamps": self.word_timestamps,
             "best_of": 1,
         }
@@ -475,6 +430,105 @@ class WhisperTurboEngine(TranscriptionEngine):
         cleaned = re.sub(r"\s*-\s*", " ", cleaned)
         cleaned = cleaned.rstrip("-").strip()
         return cleaned
+
+    def transcribe_file(
+        self, 
+        audio_path: Path, 
+        options: TranscriptionOptions
+    ) -> list[TranscriptSegment]:
+        """Transcribe entire audio file in one batch operation.
+        
+        This is the new simplified interface that processes preprocessed audio files
+        without internal VAD or sliding window overlap. Audio should already be
+        decoded and condensed via the audio preprocessing pipeline.
+        
+        Args:
+            audio_path: Path to preprocessed audio file (16kHz mono PCM WAV)
+            options: Transcription options (language, beam_size, etc.)
+            
+        Returns:
+            List of transcript segments with timestamps
+        """
+        self._lazy_model()
+        
+        # Load audio file
+        audio_np = self._load_audio_file(audio_path)
+        
+        # Transcribe WITHOUT internal VAD (preprocessing handles this)
+        beam_size = options.beam_size if options.beam_size is not None else self.default_beam_size
+        temperature = options.temperature if options.temperature is not None else self.default_temperature
+        
+        kwargs = {
+            "language": options.language,
+            "vad_filter": False,  # Always False - preprocessing handles VAD
+            "word_timestamps": self.word_timestamps,
+            "best_of": 1,
+        }
+        if beam_size is not None:
+            kwargs["beam_size"] = beam_size
+        if temperature is not None:
+            kwargs["temperature"] = temperature
+        if options.prompt:
+            kwargs["initial_prompt"] = options.prompt
+        
+        try:
+            pipeline = self._pipeline
+            use_pipeline = self.enable_batching and pipeline is not None
+            if use_pipeline and isinstance(self._model, MagicMock) and not isinstance(pipeline, MagicMock):
+                # Avoid real pipeline path when using MagicMock model doubles (tests)
+                use_pipeline = False
+
+            if use_pipeline and pipeline is not None:
+                # BatchedInferencePipeline accepts batch_size
+                kwargs["batch_size"] = self.batch_size
+                segments, info = pipeline.transcribe(audio_np, **kwargs)
+            else:
+                # WhisperModel.transcribe does not accept batch_size
+                segments, info = self._model.transcribe(audio_np, **kwargs)
+        except Exception as exc:
+            raise RuntimeError(f"Transcription failed: {exc}") from exc
+        
+        # Convert to domain model
+        result = []
+        for seg in segments:
+            text = self._clean_text(seg.text) if self.clean_disfluencies else seg.text
+            result.append(TranscriptSegment(
+                text=text.strip(),
+                start_s=seg.start,
+                end_s=seg.end,
+                language=options.language,
+                confidence=getattr(seg, 'avg_logprob', 0.0),
+            ))
+        
+        return result
+    
+    def _load_audio_file(self, audio_path: Path) -> np.ndarray:
+        """Load audio file and convert to numpy array for transcription.
+        
+        Note: This method is duplicated in both WhisperTurboEngine and VoxtralLocalEngine
+        to keep engines independent. Future refactoring could extract to shared utility.
+        
+        Args:
+            audio_path: Path to audio file (should be 16kHz mono PCM WAV)
+            
+        Returns:
+            Normalized float32 numpy array of audio samples
+        """
+        # Read WAV file
+        with wave.open(str(audio_path), 'rb') as wf:
+            if wf.getnchannels() != 1:
+                raise ValueError(f"Expected mono audio, got {wf.getnchannels()} channels")
+            if wf.getsampwidth() != 2:
+                raise ValueError(f"Expected 16-bit audio, got {wf.getsampwidth() * 8}-bit")
+            if wf.getframerate() != 16000:
+                raise ValueError(f"Expected 16kHz audio, got {wf.getframerate()}Hz")
+            
+            # Read all frames
+            frames = wf.readframes(wf.getnframes())
+        
+        # Convert to numpy array and normalize
+        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / PCM16_SCALE
+        return audio_np
 
     @property
     def metadata(self) -> EngineMetadata:
