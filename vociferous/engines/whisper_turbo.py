@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import wave
 from pathlib import Path
 from typing import Any, Iterable, List, Mapping, cast
 import os
@@ -31,6 +32,9 @@ from vociferous.engines.presets import (
 from vociferous.app.arbiter import SegmentArbiter
 
 logger = logging.getLogger(__name__)
+
+# Audio format constants
+PCM16_SCALE = 32768.0  # Normalization scale for 16-bit PCM audio
 
 
 def _bool_param(params: Mapping[str, str], key: str, default: bool) -> bool:
@@ -339,7 +343,7 @@ class WhisperTurboEngine(TranscriptionEngine):
             return
 
         audio_for_model = audio_chunk[:consume_bytes]
-        audio_np = np.frombuffer(audio_for_model, dtype=np.int16).astype(np.float32) / 32768.0
+        audio_np = np.frombuffer(audio_for_model, dtype=np.int16).astype(np.float32) / PCM16_SCALE
         segments, _ = self._transcribe(audio_np)
 
         # Convert to TranscriptSegment with stream-relative timestamps
@@ -507,8 +511,6 @@ class WhisperTurboEngine(TranscriptionEngine):
         Returns:
             Normalized float32 numpy array of audio samples
         """
-        import wave
-        
         # Read WAV file
         with wave.open(str(audio_path), 'rb') as wf:
             if wf.getnchannels() != 1:
@@ -522,7 +524,7 @@ class WhisperTurboEngine(TranscriptionEngine):
             frames = wf.readframes(wf.getnframes())
         
         # Convert to numpy array and normalize
-        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / PCM16_SCALE
         return audio_np
 
     @property

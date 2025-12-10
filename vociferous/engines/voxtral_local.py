@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import wave
 from pathlib import Path
 from typing import Any
+
+import numpy as np
 
 from vociferous.domain.model import (
     DEFAULT_MODEL_CACHE_DIR,
@@ -15,6 +18,9 @@ from vociferous.domain.exceptions import DependencyError, EngineError
 from vociferous.engines.model_registry import normalize_model_name
 from vociferous.engines.hardware import get_optimal_device, get_optimal_compute_type
 from vociferous.engines.cache_manager import configure_hf_cache
+
+# Audio format constants
+PCM16_SCALE = 32768.0  # Normalization scale for 16-bit PCM audio
 
 
 class VoxtralLocalEngine(TranscriptionEngine):
@@ -84,11 +90,10 @@ class VoxtralLocalEngine(TranscriptionEngine):
         if self._processor is None or self._model is None:
             raise RuntimeError("Model not loaded")
 
-        import numpy as np
         import torch
 
         # Process audio efficiently
-        audio_np = np.frombuffer(self._buffer, dtype=np.int16).astype("float32") / 32768.0
+        audio_np = np.frombuffer(self._buffer, dtype=np.int16).astype("float32") / PCM16_SCALE
 
         options = self._options
         processor = self._processor
@@ -212,9 +217,6 @@ class VoxtralLocalEngine(TranscriptionEngine):
         Returns:
             Normalized float32 numpy array of audio samples
         """
-        import wave
-        import numpy as np
-        
         # Read WAV file
         with wave.open(str(audio_path), 'rb') as wf:
             if wf.getnchannels() != 1:
@@ -228,7 +230,7 @@ class VoxtralLocalEngine(TranscriptionEngine):
             frames = wf.readframes(wf.getnframes())
         
         # Convert to numpy array and normalize
-        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
+        audio_np = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / PCM16_SCALE
         return audio_np
 
     @property
