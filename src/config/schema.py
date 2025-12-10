@@ -35,6 +35,11 @@ class AppConfig(BaseModel):
             "word_timestamps": "false",
         }
     )
+    canary_qwen_enabled: bool = False
+    canary_qwen_refine_by_default: bool = True
+    canary_qwen_refinement_instructions: str = (
+        "Fix grammar, add punctuation, improve readability"
+    )
     polish_enabled: bool = False
     polish_model: str | None = "qwen2.5-1.5b-instruct-q4_k_m.gguf"
     polish_params: Mapping[str, str] = Field(

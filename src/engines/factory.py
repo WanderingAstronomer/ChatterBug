@@ -57,7 +57,9 @@ def _register_engines() -> None:
     """Register all available engines. Called lazily on first use."""
     from .whisper_turbo import WhisperTurboEngine
     from .voxtral_local import VoxtralLocalEngine
+    from .canary_qwen import CanaryQwenEngine
 
     ENGINE_REGISTRY["whisper_turbo"] = WhisperTurboEngine
     ENGINE_REGISTRY["voxtral_local"] = VoxtralLocalEngine
     ENGINE_REGISTRY["voxtral"] = VoxtralLocalEngine  # Legacy alias
+    ENGINE_REGISTRY["canary_qwen"] = CanaryQwenEngine

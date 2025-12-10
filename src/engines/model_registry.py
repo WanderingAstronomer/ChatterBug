@@ -21,10 +21,28 @@ VOXTRAL_MODELS: Dict[str, str] = {
     "mistralai/Voxtral-Small-24B-2507": "https://huggingface.co/mistralai/Voxtral-Small-24B-2507",
 }
 
+CANARY_MODELS: Dict[str, str] = {
+    "nvidia/canary-qwen-2.5b": "nvidia/canary-qwen-2.5b",
+}
+
+
+def _is_invalid_canary_model(name: str, default: str | None) -> bool:
+    if not name:
+        return True
+    if name in CANARY_MODELS or str(name).startswith("nvidia/canary"):
+        return False
+    if name in VOXTRAL_MODELS or name in WHISPER_MODELS:
+        return True
+    if default and name == default:
+        return False
+    return True
+
+
 _DEFAULTS = {
     "whisper_turbo": DEFAULT_WHISPER_MODEL,
     "voxtral": "mistralai/Voxtral-Mini-3B-2507",  # Legacy alias, maps to voxtral_local
     "voxtral_local": "mistralai/Voxtral-Mini-3B-2507",
+    "canary_qwen": "nvidia/canary-qwen-2.5b",
 }
 
 _ALIASES: Dict[str, Dict[str, str]] = {
@@ -80,6 +98,9 @@ def normalize_model_name(kind: EngineKind, name: str | None) -> str:
             # If passed a voxtral model, use whisper default
             if name in VOXTRAL_MODELS or name.startswith("mistralai/"):
                 name = default or ""
+        elif kind == "canary_qwen":
+            if _is_invalid_canary_model(name, default):
+                name = default or ""
 
         alias = _ALIASES.get(kind, {})
         lookup = alias.get(name.lower()) if name else None
@@ -88,5 +109,8 @@ def normalize_model_name(kind: EngineKind, name: str | None) -> str:
     # For whisper_turbo, prefer short names for faster-whisper (better compatibility)
     if kind == "whisper_turbo" and name in WHISPER_MODELS:
         return WHISPER_MODELS[name]
+
+    if kind == "canary_qwen" and name in CANARY_MODELS:
+        return CANARY_MODELS[name]
 
     return name

@@ -22,6 +22,7 @@ from vociferous.cli.commands import (
     register_condense,
     register_record,
     register_transcribe_full,
+    register_transcribe_canary,
 )
 
 try:
@@ -107,6 +108,7 @@ register_vad(app)
 register_condense(app)
 register_record(app)
 register_transcribe_full(app)
+register_transcribe_canary(app)
 
 
 @app.callback(invoke_without_command=True)
@@ -146,7 +148,12 @@ def transcribe(
         "--engine",
         "-e",
         rich_help_panel="Core Options",
-        help="Transcription engine to use. 'whisper_turbo' is fast and accurate. 'voxtral_local' uses Mistral for smart punctuation.",
+        help=(
+            "Transcription engine to use. "
+            "'whisper_turbo' is fast and accurate. "
+            "'voxtral_local' uses Mistral for smart punctuation. "
+            "'canary_qwen' provides a dual ASR + LLM path."
+        ),
     ),
     language: str = typer.Option(
         "en",

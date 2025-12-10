@@ -11,7 +11,7 @@ DEFAULT_MODEL_CACHE_DIR = Path.home() / ".cache" / "vociferous" / "models"
 DEFAULT_WHISPER_MODEL = "deepdml/faster-whisper-large-v3-turbo-ct2"
 
 # Local engines only; "voxtral" is deprecated alias for "voxtral_local"
-EngineKind = Literal["whisper_turbo", "voxtral_local", "voxtral"]
+EngineKind = Literal["whisper_turbo", "voxtral_local", "voxtral", "canary_qwen"]
 
 # Transcription presets for accuracy vs speed trade-offs
 TranscriptionPreset = Literal["high_accuracy", "balanced", "fast"]
