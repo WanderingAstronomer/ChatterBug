@@ -106,8 +106,8 @@ vociferous condense timestamps.json input_decoded.wav
 vociferous decode lecture.mp3
 vociferous vad lecture_decoded.wav
 vociferous condense lecture_decoded_vad_timestamps.json lecture_decoded.wav
-vlc lecture_decoded_condensed. wav  # ← Listen to verify! 
-vociferous transcribe lecture_decoded_condensed. wav
+vlc lecture_decoded_condensed.wav  # ← Listen to verify! 
+vociferous transcribe lecture_decoded_condensed.wav
 ```
 
 **Why:** When the pipeline fails, you can isolate exactly which component broke.
@@ -121,7 +121,7 @@ vociferous transcribe lecture_decoded_condensed. wav
 **Example:**
 
 ```bash
-# Convenience:  runs decode → vad → condense → transcribe → polish
+# Convenience:  runs decode → vad → condense → transcribe → refine
 vociferous transcribe-full lecture.mp3
 ```
 
@@ -139,7 +139,8 @@ vociferous transcribe-full lecture.mp3
 | **VAD** | Detect speech boundaries | ❌ Audio format, ❌ Silence removal |
 | **Condenser** | Remove silence using timestamps | ❌ VAD detection, ❌ Decoding |
 | **Recorder** | Capture microphone audio | ❌ Preprocessing, ❌ Transcription |
-| **Engine** | Convert speech to text | ❌ Audio preprocessing, ❌ VAD |
+
+**Note:** Engines are infrastructure modules called by workflows, not CLI-accessible components themselves. The CLI exposes workflow commands like `transcribe` which orchestrate engine usage internally.
 
 **Anti-pattern:**
 
@@ -249,24 +250,51 @@ def test_vad_detects_speech():
 ```mermaid
 graph TD
     T["tests/"]
-    C["components/"]
+    A["audio/"]
+    E["engines/"]
+    R["refinement/"]
+    C["cli/"]
+    AP["app/"]
+    G["gui/"]
     I["integration/"]
     S["samples/"]
 
+    T --> A
+    T --> E
+    T --> R
     T --> C
+    T --> AP
+    T --> G
     T --> I
     T --> S
 
-    C --> C1["test_decoder_contract.py"]
-    C --> C2["test_vad_contract.py"]
-    C --> C3["test_condenser_contract.py"]
+    A --> A1["test_decode.py"]
+    A --> A2["test_vad.py"]
+    A --> A3["test_condenser.py"]
+    A --> AA["artifacts/<br/>test outputs"]
+
+    E --> E1["test_whisper_engine.py"]
+    E --> E2["test_canary_qwen.py"]
+    E --> EA["artifacts/<br/>test outputs"]
+
+    R --> R1["test_refiner.py"]
+    R --> RA["artifacts/<br/>test outputs"]
 
     I --> I1["test_full_pipeline.py"]
+    I --> IA["artifacts/<br/>test outputs"]
 
     S --> S1["speech_30s.flac"]
     S --> S2["speech_30s.wav"]
     S --> S3["silence_5s.wav"]
 ```
+
+**Organization Principles:**
+
+- Tests mirror the `src/` module structure
+- Each module has its own test directory
+- `artifacts/` subdirectories contain test outputs (overwritten each run)
+- `samples/` contains shared test audio files
+- `integration/` tests full workflows across modules
 
 **Principle:** If a test passes, the component works. If it fails, the component is broken.
 
@@ -282,12 +310,11 @@ graph LR
   D["Decoder<br/>standardized.wav"]
   V["VAD<br/>timestamps.json"]
   C["Condenser<br/>condensed.wav"]
-  E["Engine<br/>transcript segments"]
-  A["Arbiter<br/>deduplicated segments"]
-  P["Polisher<br/>final text"]
+  ASR["Canary ASR<br/>raw text"]
+  R["Canary Refiner<br/>refined text"]
   OUT[Output]
 
-  IN --> D --> V --> C --> E --> A --> P --> OUT
+  IN --> D --> V --> C --> ASR --> R --> OUT
 ```
 
 **Key Principles:**
@@ -300,6 +327,213 @@ graph LR
   
 - Data flows **forward only** (no backwards dependencies)
   
+
+---
+
+## Canary-Qwen Dual-Pass Architecture
+
+### **Two-Phase Processing**
+
+The Canary-Qwen engine implements a sophisticated dual-pass design that separates speech recognition from text refinement:
+
+**Pass 1: ASR Mode (Speech → Raw Text)**
+- Model configured as Automatic Speech Recognition (ASR)
+- Converts audio directly to raw transcribed text
+- Fast, focused on accurate speech-to-text conversion
+- Output: Unrefined text with potential artifacts
+
+**Pass 2: LLM Mode (Raw Text → Refined Text)**
+- Same model reconfigured as Language Model (LLM)
+- Takes raw text as input and applies linguistic refinement
+- Fixes grammar, punctuation, capitalization
+- Output: Clean, publication-ready text
+
+### **Key Optimization**
+
+**Model stays loaded between passes.** This is critical for performance:
+- No model reload overhead between ASR and refinement
+- Memory footprint remains constant (single model in VRAM/RAM)
+- Makes dual-pass practical for batch processing
+
+### **Architecture Diagram**
+
+```mermaid
+graph LR
+    A[Condensed Audio] --> ASR[Canary ASR<br/>Pass 1: Speech→Text]
+    ASR --> RAW[Raw Transcription<br/>unrefined text]
+    RAW --> LLM[Canary Refiner<br/>Pass 2: Text→Refined]
+    LLM --> OUT[Final Output<br/>refined text]
+    
+    style ASR fill:#e1f5ff
+    style LLM fill:#fff4e1
+```
+
+### **Usage**
+
+```bash
+# Run both passes (ASR + refinement)
+vociferous transcribe audio.wav --engine canary_qwen --refine
+
+# Run ASR only (skip refinement)
+vociferous transcribe audio.wav --engine canary_qwen --no-refine
+
+# Custom refinement instructions
+vociferous transcribe audio.wav --engine canary_qwen --refine \
+  --refinement-instructions "Medical terminology, formal tone"
+```
+
+### **Design Rationale**
+
+1. **Separation of Concerns:** Speech recognition and text refinement are fundamentally different tasks
+2. **Flexibility:** Users can skip refinement for speed or run it for quality
+3. **Performance:** Single model load, dual-purpose usage maximizes efficiency
+4. **Quality:** Dedicated refinement pass produces better results than single-pass ASR
+
+---
+
+## Module Architecture
+
+### **Complete Module List**
+
+Vociferous is organized into 10 modules, each with a specific responsibility:
+
+| Module | Purpose | Contains CLI Components? | Key Responsibilities |
+|--------|---------|-------------------------|---------------------|
+| **audio** | Audio preprocessing pipeline | Yes | Decode, VAD, condense, record |
+| **engines** | Speech-to-text conversion | No (infrastructure) | Whisper, Canary-Qwen, Voxtral, Parakeet engines |
+| **refinement** (polish) | Text post-processing | No (future: Yes) | Grammar correction, fluency improvement |
+| **cli** | Command-line interface | N/A (is the CLI) | Typer commands, argument parsing, orchestration |
+| **app** | Application logic & workflows | No | Workflow orchestration, session management |
+| **config** | Configuration management | No | Settings, defaults, config file handling |
+| **domain** | Core domain models | No | Data structures, type definitions |
+| **sources** | Audio source abstractions | No | File readers, stream handlers |
+| **storage** | Persistent storage | No | Model cache, artifact storage |
+| **gui** | Graphical user interface | N/A (separate interface) | KivyMD-based GUI application |
+
+### **Module Organization Principles**
+
+**1. CLI-Accessible Components (audio module)**
+
+These components can be invoked directly from the command line:
+- `vociferous decode` - Audio format normalization
+- `vociferous vad` - Voice activity detection
+- `vociferous condense` - Silence removal
+- `vociferous record` - Microphone capture
+
+**2. Infrastructure Modules (engines, refinement)**
+
+These modules are called by workflows, not directly by users:
+- Engines provide transcription capabilities
+- Refinement modules improve text quality
+- Accessed through high-level commands like `transcribe`
+
+**3. Support Modules (config, domain, sources, storage)**
+
+These modules provide supporting functionality:
+- Configuration management
+- Data structure definitions
+- I/O abstractions
+- Persistent storage
+
+---
+
+## User Help vs Developer Help
+
+### **Two-Tier Help System**
+
+Vociferous provides separate help interfaces for users and developers:
+
+**User-Facing Commands (`--help`)**
+
+These are production-ready commands intended for end users:
+- `vociferous transcribe` - Complete transcription workflow
+- `vociferous languages` - List supported languages
+- `vociferous check` - Verify system dependencies
+
+**Developer-Facing Commands (`--dev-help`)**
+
+These are individual components for debugging and development:
+- `vociferous decode` - Test audio decoding
+- `vociferous vad` - Test voice activity detection
+- `vociferous condense` - Test silence removal
+- `vociferous refine` - Test text refinement (future)
+- `vociferous record` - Test microphone capture
+
+**Rationale:**
+
+- **Users** want simple, high-level workflows that "just work"
+- **Developers** need access to individual components for debugging
+- Separating help prevents overwhelming users with internal details
+- Makes component-level testing possible without exposing complexity
+
+---
+
+## Artifact Management
+
+### **Test Artifacts**
+
+**Location:** `tests/<module>/artifacts/`
+
+Tests produce artifacts (audio files, timestamps, transcripts) for verification:
+
+```
+tests/
+  audio/
+    artifacts/
+      test_decode_output.wav
+      test_vad_timestamps.json
+  engines/
+    artifacts/
+      test_transcription.json
+  integration/
+    artifacts/
+      test_full_pipeline_output.txt
+```
+
+**Behavior:**
+- Artifacts are **overwritten on each test run**
+- Allows developers to inspect test outputs
+- Not committed to git (in `.gitignore`)
+- Helps debug test failures
+
+### **User-Facing Artifacts**
+
+**Default Behavior:** Temporary files
+
+```bash
+# Creates temp files, cleans up automatically
+vociferous transcribe lecture.mp3
+# → Uses /tmp/vociferous-XXXXX/ for intermediates
+# → Only final output kept: lecture_transcript.txt
+```
+
+**Debugging Mode:** Keep intermediate files
+
+```bash
+# Keeps all intermediate files for inspection
+vociferous transcribe lecture.mp3 --keep-intermediates
+# → Creates: lecture_decoded.wav
+# → Creates: lecture_vad_timestamps.json
+# → Creates: lecture_condensed.wav
+# → Creates: lecture_transcript.txt
+```
+
+### **Manual Component Execution**
+
+When running components manually, files are **always kept**:
+
+```bash
+vociferous decode lecture.mp3
+# → Creates lecture_decoded.wav (permanent file)
+
+vociferous vad lecture_decoded.wav
+# → Creates lecture_decoded_vad_timestamps.json (permanent file)
+
+vociferous condense lecture_decoded_vad_timestamps.json lecture_decoded.wav
+# → Creates lecture_decoded_condensed.wav (permanent file)
+```
+
+**Rationale:** When debugging, you want to inspect every step's output.
 
 ---
 
@@ -348,21 +582,32 @@ segments = engine.transcribe(condensed)
 
 ### **Design Decision: Batch Processing**
 
-**Rationale:**
+**What is Batch Processing?**
 
-- Audio is **already fully preprocessed** (decoded, VAD'd, condensed)
-  
-- ML models (Whisper, Canary-Qwen) work best on **complete files**
-  
-- Streaming adds complexity without benefit
-  
+Batch processing means: **complete file in → complete result out**. The entire audio file is processed as a single unit, from start to finish, producing the complete transcription before returning.
+
+**Use Case:**
+
+Vociferous is designed for users who submit **complete audio files** for transcription, not continuous real-time streams. Examples:
+- Pre-recorded lectures
+- Meeting recordings
+- Podcast episodes
+- Completed interviews
+
+**Why Batch is Correct for Vociferous:**
+
+1. **Simpler Architecture:** No buffering state, no overlap handling, no partial results
+2. **Matches ML APIs:** Whisper, Canary-Qwen, and similar models expect complete audio inputs
+3. **Matches Use Case:** Users have complete files they want transcribed, not live microphone streams
+4. **Eliminates Complexity:** No need to handle chunk boundaries, duplicates, or partial segments
+5. **Easier to Test:** Deterministic input/output relationships
 
 **Architecture:**
 
 ```python
 # ✅ Simple batch interface
 class TranscriptionEngine:
-    def transcribe_file(self, audio_path:  Path) -> list[TranscriptSegment]:
+    def transcribe_file(self, audio_path: Path) -> list[TranscriptSegment]:
         """Transcribe entire file in one operation."""
         ... 
 ```
@@ -370,23 +615,15 @@ class TranscriptionEngine:
 **Anti-pattern (Old Architecture):**
 
 ```python
-# ❌ Unnecessary streaming complexity
+# ❌ Unnecessary streaming complexity for batch use case
 class TranscriptionEngine:
     def start(self): ...
-    def push_audio(self, chunk:  bytes): ...  # Why chunks?
+    def push_audio(self, chunk: bytes): ...  # Why chunks for complete files?
     def flush(): ...
-    def poll_segments(): ...  # When to poll?
+    def poll_segments(): ...  # When to poll? How to handle overlaps?
 ```
 
-**Why Batch Wins:**
-
-- Simpler (no buffering state)
-  
-- Matches model APIs
-  
-- Eliminates overlap/duplicate issues
-  
-- Easier to test
+**Note:** While Vociferous uses batch processing, individual components like `record` can still capture audio from the microphone. The difference is that recording produces a **complete file** which is then processed in batch, rather than streaming audio chunks directly to the transcription engine.
   
 
 ---
@@ -676,39 +913,77 @@ def transcribe_file(self, audio_path: Path):
 
 ## Architecture Diagram
 
+### **Component vs Workflow Distinction**
+
 ```mermaid
 graph TD
     U["USER INPUT<br/>audio.mp3"]
 
-    D_CMD["vociferous decode<br/>CLI component"]
+    %% CLI-Accessible Components (solid boxes)
+    D_CMD["vociferous decode<br/>CLI Component"]
     D_OUT["audio_decoded.wav<br/>observable file"]
 
-    V_CMD["vociferous vad<br/>CLI component"]
-    V_OUT["audio_decoded_vad_timestamps.json<br/>observable file"]
+    V_CMD["vociferous vad<br/>CLI Component"]
+    V_OUT["audio_vad_timestamps.json<br/>observable file"]
 
-    C_CMD["vociferous condense<br/>CLI component"]
-    C_OUT["audio_decoded_condensed.wav<br/>observable file"]
+    C_CMD["vociferous condense<br/>CLI Component"]
+    C_OUT["audio_condensed.wav<br/>observable file"]
 
-    T_CMD["vociferous transcribe<br/>CLI component"]
-    T_OUT["transcript_segments<br/>observable output"]
+    %% Workflow Orchestrator (dashed box)
+    T_WORKFLOW["vociferous transcribe<br/>Workflow Orchestrator"]
+    
+    %% Internal Components (rounded boxes)
+    ASR["Canary ASR<br/>Internal: Pass 1"]
+    REF["Canary Refiner<br/>Internal: Pass 2"]
+    
+    T_OUT["transcript.txt<br/>observable file"]
 
-    P_CMD["vociferous polish<br/>CLI component"]
-    P_OUT["final_transcript.txt<br/>observable file"]
-
-    U --> D_CMD --> D_OUT
-    D_OUT --> V_CMD --> V_OUT
+    %% Data Flow (solid arrows)
+    U --> D_CMD
+    D_CMD --> D_OUT
+    D_OUT --> V_CMD
+    V_CMD --> V_OUT
     D_OUT --> C_CMD
     V_OUT --> C_CMD
     C_CMD --> C_OUT
-    C_OUT --> T_CMD --> T_OUT
-    T_OUT --> P_CMD --> P_OUT
+
+    %% Workflow Orchestration (dotted arrows)
+    C_OUT -.-> T_WORKFLOW
+    T_WORKFLOW -.calls.-> ASR
+    ASR -.raw text.-> REF
+    REF -.refined.-> T_WORKFLOW
+    T_WORKFLOW --> T_OUT
+
+    style D_CMD fill:#a8d5ff
+    style V_CMD fill:#a8d5ff
+    style C_CMD fill:#a8d5ff
+    style T_WORKFLOW fill:#fff3a8
+    style ASR fill:#d5ffd5
+    style REF fill:#d5ffd5
 ```
 
-Each arrow (→) is: 
-✅ Independently testable 
-✅ Manually runnable 
-✅ Produces observable output 
-✅ Single responsibility
+**Legend:**
+- **Solid Boxes (Blue)**: CLI-accessible components - users can run these directly
+- **Dashed Box (Yellow)**: Workflow orchestrator - coordinates multiple operations
+- **Rounded Boxes (Green)**: Internal components - called by workflows, not directly accessible
+- **Solid Arrows**: Data flow - files passed between components
+- **Dotted Arrows**: Orchestration - workflow calls and coordinates
+
+**Key Principles:**
+- CLI components produce **observable files** that can be inspected
+- Workflows **coordinate** components but don't expose internal steps
+- Internal components (Canary ASR, Refiner) are implementation details
+- Each data flow arrow represents an **independently testable** transition
+
+---
+
+**Architecture Validation Checklist:**
+
+Each arrow (→) represents a relationship that is:
+- ✅ Independently testable 
+- ✅ Manually runnable (for components)
+- ✅ Produces observable output 
+- ✅ Single responsibility
 
 ---
 
