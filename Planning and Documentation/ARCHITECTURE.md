@@ -106,8 +106,8 @@ vociferous condense timestamps.json input_decoded.wav
 vociferous decode lecture.mp3
 vociferous vad lecture_decoded.wav
 vociferous condense lecture_decoded_vad_timestamps.json lecture_decoded.wav
-vlc lecture_decoded_condensed. wav  # ← Listen to verify! 
-vociferous transcribe lecture_decoded_condensed. wav
+vlc lecture_decoded_condensed.wav  # ← Listen to verify! 
+vociferous transcribe lecture_decoded_condensed.wav
 ```
 
 **Why:** When the pipeline fails, you can isolate exactly which component broke.
@@ -395,7 +395,7 @@ vociferous transcribe audio.wav --engine canary_qwen --refine \
 
 ### **Complete Module List**
 
-Vociferous is organized into 9 modules, each with a specific responsibility:
+Vociferous is organized into 10 modules, each with a specific responsibility:
 
 | Module | Purpose | Contains CLI Components? | Key Responsibilities |
 |--------|---------|-------------------------|---------------------|
@@ -407,6 +407,7 @@ Vociferous is organized into 9 modules, each with a specific responsibility:
 | **config** | Configuration management | No | Settings, defaults, config file handling |
 | **domain** | Core domain models | No | Data structures, type definitions |
 | **sources** | Audio source abstractions | No | File readers, stream handlers |
+| **storage** | Persistent storage | No | Model cache, artifact storage |
 | **gui** | Graphical user interface | N/A (separate interface) | KivyMD-based GUI application |
 
 ### **Module Organization Principles**
