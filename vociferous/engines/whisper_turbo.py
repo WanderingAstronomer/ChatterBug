@@ -18,7 +18,7 @@ from vociferous.domain.model import (
     TranscriptionEngine,
     TranscriptionOptions,
 )
-from vociferous.domain.exceptions import DependencyError
+from vociferous.domain.exceptions import DependencyError, ConfigurationError
 from vociferous.engines.model_registry import normalize_model_name
 from vociferous.engines.hardware import get_optimal_device, get_optimal_compute_type
 from vociferous.engines.presets import (
@@ -79,6 +79,8 @@ class WhisperTurboEngine(TranscriptionEngine):
         self.preset = preset_name
 
         self.use_mock = _bool_param(params, "use_mock", False)
+        if self.use_mock:
+            raise ConfigurationError("Mock mode is disabled for whisper_turbo. Remove params.use_mock=true.")
 
         preset_cfg = get_preset_config(self.preset, WHISPER_TURBO_PRESETS, "balanced")
         use_preset_model = (
@@ -129,30 +131,6 @@ class WhisperTurboEngine(TranscriptionEngine):
 
     def _lazy_model(self):
         if self._model is not None:
-            return
-
-        if self.use_mock:
-            class _MockSegment:
-                def __init__(self, text: str, start: float, end: float, avg_logprob: float = 0.0):
-                    self.text = text
-                    self.start = start
-                    self.end = end
-                    self.avg_logprob = avg_logprob
-
-            class _MockModel:
-                def transcribe(self, audio_np: np.ndarray, **kwargs):
-                    duration_s = float(len(audio_np)) / 16000.0 if len(audio_np) else 0.0
-                    return [
-                        _MockSegment(
-                            text="mock whisper transcript",
-                            start=0.0,
-                            end=duration_s,
-                            avg_logprob=1.0,
-                        )
-                    ], None
-
-            self._model = _MockModel()
-            self._pipeline = None
             return
         try:
             from faster_whisper import WhisperModel

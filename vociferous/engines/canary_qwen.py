@@ -3,10 +3,8 @@ from __future__ import annotations
 """
 Canary-Qwen 2.5B dual-pass engine (ASR + refinement).
 
-Notes:
-- Defaults to a mock path to avoid heavyweight downloads during tests.
-- When torch/transformers are present and `use_mock` is false, we can lazily
-    load the real model; the stub keeps the API stable for future expansion.
+Mocks are disallowed at runtime. If dependencies or downloads fail, the engine
+raises a DependencyError so the CLI can fail loudly with guidance.
 """
 
 import logging
@@ -20,6 +18,7 @@ from vociferous.domain.model import (
     TranscriptionEngine,
     TranscriptionOptions,
 )
+from vociferous.domain.exceptions import ConfigurationError, DependencyError
 from vociferous.engines.model_registry import normalize_model_name
 
 logger = logging.getLogger(__name__)
@@ -52,10 +51,9 @@ class CanaryQwenEngine(TranscriptionEngine):
         self.device = config.device
         self.precision = config.compute_type
         params = {k.lower(): v for k, v in (config.params or {}).items()}
-        self.use_mock = _bool_param(params, "use_mock", False)
-        self.mock_reason: str | None = None
-        if self.use_mock:
-            self.mock_reason = "Mock mode enabled via params.use_mock=true"
+        if _bool_param(params, "use_mock", False):
+            raise ConfigurationError("Mock mode is disabled for Canary-Qwen. Remove params.use_mock=true.")
+        self.use_mock = False
         self._model: Any | None = None
         self._processor: Any | None = None
         self._lazy_model()
@@ -79,7 +77,7 @@ class CanaryQwenEngine(TranscriptionEngine):
             start_s=0.0,
             end_s=duration_s,
             language=language,
-            confidence=1.0 if self.use_mock else 0.0,
+            confidence=0.0,
         )
         return [segment]
 
@@ -89,29 +87,23 @@ class CanaryQwenEngine(TranscriptionEngine):
         if not cleaned:
             return ""
 
-        if self.use_mock or self._model is None or self._processor is None:
-            # Mock refinement: capitalize and append prompt marker for visibility.
-            normalized = cleaned[0].upper() + cleaned[1:] if len(cleaned) > 1 else cleaned.upper()
-            if not normalized.rstrip().endswith((".", "!", "?")):
-                normalized = normalized.rstrip() + "."
-            return f"{normalized} [refined]"
+        if self._model is None or self._processor is None:
+            raise DependencyError("Canary-Qwen model not loaded; install transformers/torch/accelerate and retry.")
 
         # Real refinement path placeholder; keep API stable for future model wiring.
         return cleaned if cleaned else ""
 
     # Internals ---------------------------------------------------------
     def _lazy_model(self) -> None:
-        if self._model is not None or self.use_mock:
+        if self._model is not None:
             return
         try:
             from transformers import AutoModelForSpeechSeq2Seq, AutoProcessor  # pragma: no cover - optional
             import torch  # pragma: no cover - optional
         except ImportError:  # pragma: no cover - dependency guard
-            self._set_mock(
-                "Missing dependencies for Canary-Qwen (install transformers, torch, accelerate). "
-                "Set params.use_mock=true to silence this warning."
+            raise DependencyError(
+                "Missing dependencies for Canary-Qwen. Install with: pip install 'transformers' 'torch' 'accelerate'"
             )
-            return
 
         cache_dir = Path(self.config.model_cache_dir).expanduser() if self.config.model_cache_dir else None
         if cache_dir:
@@ -126,14 +118,16 @@ class CanaryQwenEngine(TranscriptionEngine):
             )
             self._model.to(self.device if self.device != "auto" else "cpu")
         except Exception as exc:  # pragma: no cover - optional guard
-            self._set_mock(f"Failed to load Canary-Qwen model '{self.model_name}': {exc}")
+            raise DependencyError(
+                f"Failed to load Canary-Qwen model '{self.model_name}': {exc}\n"
+                "Ensure the model is accessible and dependencies are installed."
+            ) from exc
 
     def _transcribe_bytes(self, data: bytes) -> str:
         if not data:
             return ""
-        if self.use_mock or self._model is None or self._processor is None:
-            duration = self._estimate_duration(data)
-            return f"Canary-Qwen mock transcript (~{duration:.1f}s of audio)"
+        if self._model is None or self._processor is None:
+            raise DependencyError("Canary-Qwen model not loaded; install dependencies and retry.")
 
         import torch  # pragma: no cover - optional heavy path
         import numpy as np  # pragma: no cover - optional heavy path
@@ -176,10 +170,3 @@ class CanaryQwenEngine(TranscriptionEngine):
             "bfloat16": getattr(torch_module, "bfloat16", None),
         }
         return mapping.get(precision, torch_module.float32)
-
-    def _set_mock(self, reason: str) -> None:
-        self.use_mock = True
-        self.mock_reason = reason
-        self._processor = None
-        self._model = None
-        logger.warning(reason)
