@@ -1,32 +1,17 @@
-from __future__ import annotations
+"""DEPRECATED: VADComponent has moved to vociferous.cli.components.vad
 
-from pathlib import Path
-from typing import Any
+This module provides backward compatibility. Will be removed in v1.0.0.
+"""
 
-from vociferous.audio.silero_vad import SileroVAD
+import warnings
 
+warnings.warn(
+    "Importing VADComponent from vociferous.audio.components.vad is deprecated. "
+    "Import from vociferous.cli.components.vad instead.",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
-class VADComponent:
-    """Speech timestamp detection via Silero VAD."""
+from vociferous.cli.components.vad import VADComponent
 
-    def __init__(self, sample_rate: int = 16000, device: str = "cpu") -> None:
-        self._vad = SileroVAD(sample_rate=sample_rate, device=device)
-
-    def detect(
-        self,
-        audio_path: Path | str,
-        *,
-        output_path: Path | None = None,
-        threshold: float = 0.5,
-        min_silence_ms: int = 500,
-        min_speech_ms: int = 250,
-    ) -> list[dict[str, Any]]:
-        """Detect speech timestamps and optionally write JSON."""
-        return self._vad.detect_speech(
-            Path(audio_path),
-            threshold=threshold,
-            min_silence_ms=min_silence_ms,
-            min_speech_ms=min_speech_ms,
-            save_json=True,
-            output_path=output_path,
-        )
+__all__ = ["VADComponent"]

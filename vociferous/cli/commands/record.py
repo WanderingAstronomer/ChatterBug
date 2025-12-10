@@ -6,7 +6,7 @@ import wave
 
 import typer
 
-from vociferous.audio.components import RecorderComponent
+from vociferous.cli.components import RecorderComponent
 from vociferous.domain.exceptions import DependencyError
 
 

@@ -6,7 +6,7 @@ from pathlib import Path
 
 import typer
 
-from vociferous.audio.components import CondenserComponent
+from vociferous.cli.components import CondenserComponent
 from vociferous.domain.exceptions import AudioDecodeError
 
 

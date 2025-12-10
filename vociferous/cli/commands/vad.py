@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from vociferous.audio.components import VADComponent
+from vociferous.cli.components import VADComponent
 from vociferous.domain.exceptions import AudioDecodeError
 
 

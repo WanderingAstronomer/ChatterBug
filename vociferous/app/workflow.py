@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from vociferous.audio.components import CondenserComponent, DecoderComponent, VADComponent
+from vociferous.cli.components import CondenserComponent, DecoderComponent, VADComponent
 from vociferous.config.schema import ArtifactConfig
 from vociferous.domain.model import (
     EngineConfig,
