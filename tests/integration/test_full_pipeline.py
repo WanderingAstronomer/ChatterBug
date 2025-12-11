@@ -3,12 +3,22 @@
 from __future__ import annotations
 
 import json
+import shutil
 import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SAMPLES_DIR = Path(__file__).resolve().parents[1] / "audio" / "sample_audio"
 SHORT_FLAC = SAMPLES_DIR / "ASR_Test.flac"
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None, reason="ffmpeg is required for pipeline contract tests"
+)
+
+if not SHORT_FLAC.exists():
+    pytest.skip("Sample audio fixture missing", allow_module_level=True)
 
 
 def _run_cli(args: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:

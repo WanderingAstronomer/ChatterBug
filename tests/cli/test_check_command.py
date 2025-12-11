@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -8,6 +9,10 @@ from pathlib import Path
 import pytest
 
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None, reason="ffmpeg is required for dependency checks"
+)
 
 
 @pytest.fixture(autouse=True)

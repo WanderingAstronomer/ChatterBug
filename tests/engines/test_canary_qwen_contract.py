@@ -11,6 +11,14 @@ from pathlib import Path
 
 import pytest
 
+torch = pytest.importorskip("torch", reason="Canary tests require PyTorch")
+pytest.importorskip(
+    "nemo.collections.speechlm2.models",
+    reason="Canary-Qwen tests require NeMo dependencies",
+)
+if not torch.cuda.is_available():  # pragma: no cover - hardware guard
+    pytest.skip("Canary tests require CUDA GPU", allow_module_level=True)
+
 from vociferous.domain.model import EngineConfig, TranscriptionOptions
 from vociferous.engines.canary_qwen import CanaryQwenEngine
 
