@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -14,6 +15,13 @@ import pytest
 SAMPLES_DIR = Path(__file__).resolve().parent / "sample_audio"
 SHORT_FLAC = SAMPLES_DIR / "ASR_Test.flac"
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("ffmpeg") is None, reason="ffmpeg is required for VAD contract tests"
+)
+
+if not SHORT_FLAC.exists():
+    pytest.skip("Sample audio fixture missing", allow_module_level=True)
 
 
 @pytest.fixture(autouse=True)
