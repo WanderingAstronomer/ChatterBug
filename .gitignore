@@ -1,6 +1,7 @@
 # Changes and Improvement plans
 Planning and Documentation/IMPROVEMENT_PLAN.md
-CHANGES.md
+docs/CHANGES.md
+.github/
 
 # Dev Diary
 Dev Diary - Vociferous.md
@@ -180,3 +181,4 @@ output/
 # Test artifacts (keep structure, ignore files)
 tests/*/artifacts/*
 !tests/*/artifacts/.gitkeep
+vociferous/audio/recordings/*. wav
