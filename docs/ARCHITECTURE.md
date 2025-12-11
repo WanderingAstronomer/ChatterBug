@@ -11,7 +11,7 @@
 | **audio** | ✅ Implemented | Audio primitives (decoder, vad, condenser, recorder) |
 | **engines** | 🚧 In Progress | Canary dual-pass implementation ongoing (Issue #9) |
 | **refinement** | 🚧 In Progress | Replacing polish module; depends on Canary LLM mode (Issues #8, #10) |
-| **cli** | ✅ Implemented | Commands and interface adapters (cli.components) |
+| **cli** | ✅ Implemented | Commands and interface adapters (cli.components); explicit deps provisioning (Issue #1) |
 | **app** | 🚧 In Progress | Removing TranscriptionSession/Arbiter; workflow function in progress (Issues #5, #6, #7) |
 | **config** | ✅ Implemented | Config loading and management working |
 | **domain** | ✅ Implemented | Core types, models, exceptions defined |
@@ -436,6 +436,184 @@ vociferous transcribe audio.wav --engine canary_qwen --refine \
 2. **Flexibility:** Users can skip refinement for speed or run it for quality
 3. **Performance:** Single model load, dual-purpose usage maximizes efficiency
 4. **Quality:** Dedicated refinement pass produces better results than single-pass ASR
+
+---
+
+## Provisioner & Engine Requirements
+
+### **Explicit Dependency Management**
+
+Vociferous follows a **fail-loud** principle: engines do not automatically install dependencies or download models. Instead, the system provides explicit provisioning commands to check and manage requirements.
+
+**Core Principle:** No implicit installs, no silent downloads, no mocks in production.
+
+### **Provisioner Commands**
+
+The `vociferous deps` command group provides explicit dependency management:
+
+```bash
+# Check for missing dependencies and models
+vociferous deps check --engine canary_qwen
+
+# Example output shows missing packages and provides install commands
+```
+
+**Available Commands:**
+
+| Command | Purpose | Behavior |
+|---------|---------|----------|
+| `deps check` | Detect missing Python packages and model weights | Non-invasive; reports status and provides actionable commands |
+| `deps install` | (Future) Automated dependency installation | Will install required packages via pip |
+| `deps download` | (Future) Explicit model download | Will pre-download models to cache |
+
+**Exit Codes:**
+- `0` - All dependencies satisfied
+- `2` - Missing dependencies or models detected
+
+**Philosophy:** Dependencies are managed explicitly by the user, not implicitly by the application. This prevents surprise installations, respects user control, and makes dependency issues visible immediately.
+
+---
+
+### **Engine Requirements Table**
+
+Each engine declares its required packages and models explicitly. The `deps check` command inspects these requirements without triggering heavy imports.
+
+| Engine | Required Packages | Model Repository | Model Cache Location |
+|--------|------------------|------------------|---------------------|
+| **canary_qwen** | `transformers>=4.38.0`<br/>`torch>=2.0.0`<br/>`accelerate>=0.28.0` | `nvidia/canary-1b` | `~/.cache/vociferous/models/` |
+| **whisper_turbo** | `faster-whisper>=1.0.0`<br/>`ctranslate2>=4.0.0` | `Systran/faster-whisper-large-v3` | `~/.cache/vociferous/models/` |
+
+**Notes:**
+- Package versions are minimum requirements; newer versions typically work
+- Models are downloaded automatically on first use if not cached
+- Cache location can be configured via `model_cache_dir` in `~/.config/vociferous/config.toml`
+- GPU support requires appropriate CUDA-capable `torch` installation
+
+---
+
+### **Cache Behavior**
+
+**Model Cache Directory:** `~/.cache/vociferous/models/` (default)
+
+**Behavior:**
+- Models are downloaded on first use to the cache directory
+- Subsequent runs reuse cached models (no re-download)
+- Cache can be pre-populated using `deps download` (planned)
+- Cache location is configurable via `config.toml`
+
+**Hugging Face Cache Integration:**
+- Models use Hugging Face Hub's cache structure
+- Cache entries follow `models/hub/model--<org>--<name>/` pattern
+- Compatible with `HF_HOME` environment variable
+
+**Cache Verification:**
+- `deps check` inspects cache for model presence
+- Reports "CACHED" for available models, "NOT CACHED" otherwise
+- Does not validate model integrity (assumes cached = valid)
+
+---
+
+### **Fail-Loud Contract**
+
+**Principle:** If a dependency is missing, the system must fail immediately with a clear, actionable error message.
+
+**What This Means:**
+- ❌ **No implicit installs** - The system never runs `pip install` automatically
+- ❌ **No silent downloads** - Model downloads are explicit and visible
+- ❌ **No mock fallbacks** - Production code must use real implementations
+- ✅ **Clear error messages** - Missing dependencies trigger errors with installation instructions
+- ✅ **Explicit provisioning** - User controls when and how dependencies are installed
+
+**Example Error Flow:**
+
+```bash
+$ vociferous transcribe audio.wav --engine canary_qwen
+
+❌ Error: Missing required packages for canary_qwen engine
+   - transformers>=4.38.0 (not installed)
+   - torch>=2.0.0 (not installed)
+
+Run: vociferous deps check --engine canary_qwen
+Then: pip install transformers torch accelerate
+```
+
+**Anti-Pattern (What We Don't Do):**
+
+```python
+# ❌ Silent fallback to mock (hides the problem)
+try:
+    from transformers import AutoModel
+    use_mock = False
+except ImportError:
+    use_mock = True  # User doesn't know they're not getting real results!
+
+# ❌ Implicit dependency installation (violates user control)
+try:
+    import torch
+except ImportError:
+    print("Installing torch...")
+    subprocess.run(["pip", "install", "torch"])  # Surprise!
+```
+
+**Correct Pattern (What We Do):**
+
+```python
+# ✅ Explicit check with clear error
+try:
+    from transformers import AutoModel
+except ImportError:
+    raise RuntimeError(
+        "Missing required package: transformers\n"
+        "Run: pip install transformers>=4.38.0\n"
+        "Or check dependencies: vociferous deps check --engine canary_qwen"
+    )
+```
+
+---
+
+### **Developer Workflow**
+
+**Setting Up a New Engine:**
+
+1. **Check dependencies:**
+   ```bash
+   vociferous deps check --engine canary_qwen
+   ```
+
+2. **Install missing packages:**
+   ```bash
+   pip install transformers torch accelerate
+   ```
+
+3. **Verify installation:**
+   ```bash
+   vociferous deps check --engine canary_qwen
+   # Should show: ✓ All dependencies satisfied
+   ```
+
+4. **First run (downloads model):**
+   ```bash
+   vociferous transcribe audio.wav --engine canary_qwen
+   # Model downloads to ~/.cache/vociferous/models/ on first use
+   ```
+
+**CI/Offline Workflows:**
+
+For environments without internet access:
+1. Pre-populate model cache on a machine with internet
+2. Copy `~/.cache/vociferous/models/` to offline environment
+3. `deps check` verifies cached models are present
+4. Transcription runs without network access
+
+**Future Enhancements (Planned):**
+
+```bash
+# Explicit dependency installation (Issue #1 follow-up)
+vociferous deps install --engine canary_qwen --yes
+
+# Explicit model download (Issue #1 follow-up)
+vociferous deps download --engine canary_qwen
+```
 
 ---
 
