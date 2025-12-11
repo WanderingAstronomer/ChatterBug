@@ -509,6 +509,7 @@ These are individual components for debugging and development:
 - `vociferous condense` - Test silence removal
 - `vociferous refine` - Text-only refinement (planned CLI component; LLM pass)
 - `vociferous record` - Test microphone capture
+- `vociferous deps check` - Check engine dependencies and models
 - `vociferous transcribe` - Full workflow orchestrator (shows how components chain)
 
 **Rationale:**
@@ -1007,6 +1008,57 @@ vociferous condense audio.wav  # Where are timestamps?
 ```
 
 **Why:** Makes data flow visible and debuggable.
+
+### **Engine Dependency Provisioning**
+
+**Principle:** Dependencies and models must be explicitly provisioned; no implicit installs or silent mocks.
+
+**Available Commands:**
+
+```bash
+# Check for missing dependencies and models
+vociferous deps check                         # Check canary_qwen (default)
+vociferous deps check --engine whisper_turbo  # Check specific engine
+
+# Future: Install and download (Phase 2)
+vociferous deps install --engine canary_qwen --yes
+vociferous deps download --engine canary_qwen
+```
+
+**Example Output:**
+
+```
+Dependency Check: canary_qwen
+┌────────────────┬─────────┬──────────────────────┐
+│ Component      │ Status  │ Details              │
+├────────────────┼─────────┼──────────────────────┤
+│ transformers   │ MISSING │ transformers>=4.38.0 │
+│ torch          │ MISSING │ torch>=2.0.0         │
+│ accelerate     │ MISSING │ accelerate>=0.28.0   │
+│ Model: canary  │ MISSING │ NVIDIA Canary 1B ASR │
+└────────────────┴─────────┴──────────────────────┘
+
+Actions needed:
+  pip install "transformers>=4.38.0" "torch>=2.0.0" "accelerate>=0.28.0"
+
+Model cache: ~/.cache/vociferous/models
+Models will be downloaded automatically on first use.
+```
+
+**Architecture Principles:**
+
+1. **Fail-loud:** Missing dependencies cause clear errors with actionable guidance
+2. **No implicit installs:** The engine never runs pip or downloads models silently
+3. **Explicit commands:** Users run `deps check` to see what's needed
+4. **Cache-aware:** Models download to configured `model_cache_dir`
+5. **No mocks at runtime:** Tests may use mocks, but production code fails explicitly
+
+**Why This Matters:**
+
+- Prevents partial installs and mixed environments
+- Makes dependency requirements transparent
+- Avoids surprising behavior (no silent downloads during transcription)
+- Enables CI gating with offline guardrails (future: `allow_download=false`)
 
 ---
 
