@@ -15,7 +15,7 @@ Hybrid encoder/decoder model that can both transcribe audio and refine text usin
 - `accelerate>=0.28.0`
 
 **Model:**
-- Model repository: `nvidia/canary-1b`
+- Model repository: `nvidia/canary-qwen-2.5b`
 - Cache location: `~/.cache/vociferous/models/` (configurable)
 - Downloaded automatically on first use if not cached
 

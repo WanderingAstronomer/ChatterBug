@@ -480,7 +480,7 @@ Each engine declares its required packages and models explicitly. The `deps chec
 
 | Engine | Required Packages | Model Repository | Model Cache Location |
 |--------|------------------|------------------|---------------------|
-| **canary_qwen** | `transformers>=4.38.0`<br/>`torch>=2.0.0`<br/>`accelerate>=0.28.0` | `nvidia/canary-1b` | `~/.cache/vociferous/models/` |
+| **canary_qwen** | `transformers>=4.38.0`<br/>`torch>=2.0.0`<br/>`accelerate>=0.28.0` | `nvidia/canary-qwen-2.5b` | `~/.cache/vociferous/models/` |
 | **whisper_turbo** | `faster-whisper>=1.0.0`<br/>`ctranslate2>=4.0.0` | `Systran/faster-whisper-large-v3` | `~/.cache/vociferous/models/` |
 
 **Notes:**
