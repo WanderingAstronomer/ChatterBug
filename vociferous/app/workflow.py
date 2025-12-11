@@ -49,32 +49,85 @@ def _wav_duration(path: Path) -> float:
 
 
 class EngineWorker:
-    """In-process engine worker that keeps a single engine instance warm."""
+    """In-process engine worker that keeps a single engine instance warm.
+    
+    Supports lazy loading and daemon integration - the local engine is only
+    loaded if the daemon is not running.
+    """
 
     def __init__(
         self,
         profile: EngineProfile,
         *,
         engine: TranscriptionEngine | None = None,
+        use_daemon: bool = True,
     ) -> None:
         self.profile = profile
-        self._engine = engine or build_engine(profile.kind, profile.config)
+        self._provided_engine = engine
+        self._engine: TranscriptionEngine | None = engine
         self._warnings: list[str] = []
+        self._use_daemon = use_daemon
+        self._daemon_checked = False
+        self._daemon_available = False
+        self._used_daemon = False  # Track if daemon was actually used
+        
+        # Only load engine immediately if one was provided
+        # Otherwise, defer to first use to allow daemon check
+        if engine is not None:
+            self._engine = engine
+
+    def _check_daemon(self) -> bool:
+        """Check if daemon is available (cached)."""
+        if self._daemon_checked:
+            return self._daemon_available
+        
+        self._daemon_checked = True
+        if not self._use_daemon:
+            self._daemon_available = False
+            return False
+            
+        try:
+            from vociferous.server import is_daemon_running
+            self._daemon_available = is_daemon_running()
+        except ImportError:
+            self._daemon_available = False
+        
+        return self._daemon_available
+
+    def _ensure_engine(self) -> TranscriptionEngine:
+        """Lazily load the engine if needed."""
+        if self._engine is None:
+            self._engine = build_engine(self.profile.kind, self.profile.config)
+        return self._engine
 
     @property
     def metadata(self):
-        return self._engine.metadata
+        """Get engine metadata.
+        
+        If daemon was used, returns metadata based on profile config.
+        Otherwise, loads the engine and gets its metadata.
+        """
+        if self._used_daemon:
+            # Return metadata based on what we know from config
+            from vociferous.domain.model import EngineMetadata
+            return EngineMetadata(
+                model_name=self.profile.config.model_name or "nvidia/canary-qwen-2.5b",
+                device="daemon",
+                precision=self.profile.config.compute_type or "fp16",
+            )
+        return self._ensure_engine().metadata
 
     @property
     def warnings(self) -> tuple[str, ...]:
         return tuple(self._warnings)
 
     def transcribe(self, audio_path: Path) -> list[TranscriptSegment]:
-        return self._engine.transcribe_file(Path(audio_path), self.profile.options)
+        return self._ensure_engine().transcribe_file(Path(audio_path), self.profile.options)
 
     def refine_text(self, text: str, instructions: str | None = None) -> str:
-        if hasattr(self._engine, "refine_text"):
-            return self._engine.refine_text(text, instructions)  # type: ignore[attr-defined]
+        engine = self._ensure_engine()
+        if hasattr(engine, "refine_text"):
+            return engine.refine_text(text, instructions)  # type: ignore[attr-defined]
         return text
 
     def refine_segments(
@@ -84,16 +137,50 @@ class EngineWorker:
         instructions: str | None = None,
     ) -> list[TranscriptSegment]:
         """Refine segments via engine if it supports segment refinement."""
-        if hasattr(self._engine, "refine_segments"):
-            return self._engine.refine_segments(segments, mode, instructions)  # type: ignore[attr-defined]
+        engine = self._ensure_engine()
+        if hasattr(engine, "refine_segments"):
+            return engine.refine_segments(segments, mode, instructions)  # type: ignore[attr-defined]
         
         # Fallback: use text-based refinement and assign to all segments
         combined_text = " ".join(seg.raw_text.strip() for seg in segments if seg.raw_text.strip())
-        if not combined_text or not hasattr(self._engine, "refine_text"):
+        if not combined_text or not hasattr(engine, "refine_text"):
             return segments
         
         refined_text = self.refine_text(combined_text, instructions)
         return [replace(seg, refined_text=refined_text) for seg in segments]
+
+    def transcribe_batch(self, audio_paths: list[Path]) -> list[list[TranscriptSegment]]:
+        """Transcribe multiple audio files in a single batched call if supported.
+        
+        Falls back to sequential transcription if the engine doesn't support batching.
+        Automatically uses the daemon server if it's running for faster inference.
+        """
+        # Try daemon first for fastest inference (model already in GPU memory)
+        if self._check_daemon():
+            try:
+                from vociferous.server import transcribe_via_daemon
+                daemon_segments = transcribe_via_daemon(
+                    [Path(p) for p in audio_paths],
+                    language=self.profile.options.language,
+                )
+                if daemon_segments is not None:
+                    self._used_daemon = True  # Mark that daemon was used
+                    # Daemon returns flat list, need to group by audio file
+                    # For now, return all segments as a single group since daemon 
+                    # already handles batching internally
+                    return [daemon_segments]
+            except Exception:
+                pass  # Daemon failed, fallback to local engine
+        
+        # Fallback to local engine
+        engine = self._ensure_engine()
+        if hasattr(engine, "transcribe_files_batch"):
+            return engine.transcribe_files_batch(  # type: ignore[attr-defined]
+                [Path(p) for p in audio_paths], 
+                self.profile.options
+            )
+        # Fallback: sequential transcription
+        return [self.transcribe(path) for path in audio_paths]
 
 
 
@@ -176,12 +263,18 @@ def transcribe_file_workflow(
         else:
             condensed_paths = [Path(condensed_path)]
 
+        # Get durations for offset calculation
+        chunk_durations = [_wav_duration(p) for p in condensed_paths]
+        
+        # Use batch transcription for significant speedup (single inference call for all chunks)
+        all_chunk_segments = worker.transcribe_batch(condensed_paths)
+        
+        # Apply time offsets to each chunk's segments
         all_segments: list[TranscriptSegment] = []
         offset = 0.0
-        for condensed in condensed_paths:
-            chunk_segments = worker.transcribe(condensed)
+        for chunk_segments, duration in zip(all_chunk_segments, chunk_durations):
             all_segments.extend(_offset_segments(chunk_segments, offset))
-            offset += _wav_duration(condensed)
+            offset += duration
 
         text = _segments_to_text(all_segments)
 

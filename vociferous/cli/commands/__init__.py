@@ -7,6 +7,7 @@ from .record import register_record
 from .refine import register_refine
 from .deps import register_deps
 from .bench import register_bench
+from .daemon import register_daemon
 
 __all__ = [
     "register_decode",
@@ -16,4 +17,5 @@ __all__ = [
     "register_refine",
     "register_deps",
     "register_bench",
+    "register_daemon",
 ]

@@ -27,6 +27,7 @@ from vociferous.cli.commands import (
     register_refine,
     register_deps,
     register_bench,
+    register_daemon,
 )
 
 try:
@@ -222,6 +223,7 @@ register_refine(app)        # rich_help_panel="Refinement Components"
 # Utility commands (available to all users)
 register_deps(app)          # rich_help_panel="Utilities"
 register_bench(app)         # rich_help_panel="Utilities"
+register_daemon(app)        # rich_help_panel="Performance"
 
 # User-tier commands are defined below: transcribe, languages, check
 
@@ -377,18 +379,14 @@ def transcribe(
     # CLI --refine/--no-refine overrides engine default (Canary-Qwen supports refinement by default)
     refine_enabled = refine if refine is not None else (engine == "canary_qwen")
 
-    # Build engine and optional refiner
+    # Build engine profile and optional refiner
+    # NOTE: We DON'T load the engine here anymore - EngineWorker handles lazy loading
+    # and will use the daemon if available
     refiner = None
     engine_profile = EngineProfile(engine, bundle.engine_config, bundle.options)
-    engine_worker = None
     try:
-        engine_adapter = build_engine(engine, bundle.engine_config)
-        engine_worker = EngineWorker(engine_profile, engine=engine_adapter)
         if bundle.refiner_config.enabled:
             refiner = build_refiner(bundle.refiner_config)
-    except (DependencyError, EngineError) as exc:
-        typer.echo(f"Engine initialization error: {exc}", err=True)
-        raise typer.Exit(code=3) from exc
     except ConfigurationError as exc:
         typer.echo(f"Refiner error: {exc}", err=True)
         raise typer.Exit(code=2) from exc
@@ -447,7 +445,6 @@ def transcribe(
             refine_instructions=refine_instructions if refine_enabled else None,
             keep_intermediates=keep_intermediates_choice,
             artifact_config=config.artifacts,
-            engine_worker=engine_worker,
         )
         for segment in result.segments:
             sink.handle_segment(segment)
