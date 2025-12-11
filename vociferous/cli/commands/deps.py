@@ -84,9 +84,9 @@ def _get_engine_requirements(engine: str) -> tuple[list[str], list[dict[str, str
         packages = ["transformers>=4.38.0", "torch>=2.0.0", "accelerate>=0.28.0"]
         models = [
             {
-                "name": "nvidia/canary-1b",
-                "repo_id": "nvidia/canary-1b",
-                "description": "NVIDIA Canary 1B ASR model (default)",
+                "name": "nvidia/canary-qwen-2.5b",
+                "repo_id": "nvidia/canary-qwen-2.5b",
+                "description": "NVIDIA Canary-Qwen 2.5B ASR model (default)",
             }
         ]
     elif engine == "whisper_turbo":
