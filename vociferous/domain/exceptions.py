@@ -27,11 +27,6 @@ class ConfigurationError(VociferousError):
     pass
 
 
-class SessionError(VociferousError):
-    """Raised when a transcription session encounters an error."""
-    pass
-
-
 class DependencyError(VociferousError):
     """Raised when a required dependency is missing."""
     pass

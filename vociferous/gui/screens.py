@@ -567,7 +567,7 @@ class SettingsScreen(Screen):
 
     def _show_engine_menu(self, item: Any) -> None:
         """Show engine selection menu."""
-        engines = ["whisper_turbo", "voxtral_local"]
+        engines = ["whisper_turbo"]
         menu_items = [
             {
                 "text": engine,
@@ -590,7 +590,7 @@ class SettingsScreen(Screen):
         """
         logger.info("Engine selected", engine=engine)
         # Validate engine is a valid EngineKind
-        valid_engines = {"whisper_turbo", "voxtral_local"}
+        valid_engines = {"whisper_turbo"}
         if engine in valid_engines:
             self.config.engine = engine  # type: ignore[assignment]
         self.engine_item.secondary_text = f"Current: {engine}"

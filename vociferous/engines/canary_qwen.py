@@ -9,7 +9,7 @@ raises a DependencyError so the CLI can fail loudly with guidance.
 
 import logging
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from vociferous.domain.model import (
     EngineConfig,
@@ -18,19 +18,10 @@ from vociferous.domain.model import (
     TranscriptionEngine,
     TranscriptionOptions,
 )
-from vociferous.domain.exceptions import ConfigurationError, DependencyError
+from vociferous.domain.exceptions import DependencyError
 from vociferous.engines.model_registry import normalize_model_name
 
 logger = logging.getLogger(__name__)
-
-
-def _bool_param(params: Mapping[str, str], key: str, default: bool) -> bool:
-    raw = params.get(key)
-    if raw is None:
-        return default
-    return str(raw).strip().lower() == "true"
-
-
 DEFAULT_REFINE_PROMPT = (
     "Refine the following transcript by:\n"
     "1. Correcting grammar and punctuation\n"
@@ -50,10 +41,6 @@ class CanaryQwenEngine(TranscriptionEngine):
         self.model_name = normalize_model_name("canary_qwen", config.model_name)
         self.device = config.device
         self.precision = config.compute_type
-        params = {k.lower(): v for k, v in (config.params or {}).items()}
-        if _bool_param(params, "use_mock", False):
-            raise ConfigurationError("Mock mode is disabled for Canary-Qwen. Remove params.use_mock=true.")
-        self.use_mock = False
         self._model: Any | None = None
         self._audio_tag: str = "<|audioplaceholder|>"
         self._lazy_model()
@@ -67,7 +54,7 @@ class CanaryQwenEngine(TranscriptionEngine):
         )
 
     # Batch interface ----------------------------------------------------
-    def transcribe_file(self, audio_path: Path, options: TranscriptionOptions) -> list[TranscriptSegment]:
+    def transcribe_file(self, audio_path: Path, options: TranscriptionOptions | None = None) -> list[TranscriptSegment]:
         if self._model is None:
             raise DependencyError(
                 "Canary-Qwen model not loaded; install NeMo trunk: pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\""
@@ -94,9 +81,10 @@ class CanaryQwenEngine(TranscriptionEngine):
         transcript_text = self._model.tokenizer.ids_to_text(answer_ids[0].cpu())
 
         segment = TranscriptSegment(
-            text=transcript_text,
-            start_s=0.0,
-            end_s=duration_s,
+            id="segment-0",
+            start=0.0,
+            end=duration_s,
+            raw_text=transcript_text,
             language=language,
             confidence=0.0,
         )
@@ -120,7 +108,8 @@ class CanaryQwenEngine(TranscriptionEngine):
                 max_new_tokens=self._resolve_refine_tokens(cleaned),
             )
 
-        refined = self._model.tokenizer.ids_to_text(answer_ids[0].cpu()).strip()
+        # Type assertion: ids_to_text returns str but lacks type hints
+        refined: str = self._model.tokenizer.ids_to_text(answer_ids[0].cpu()).strip()
         return refined
 
     # Internals ---------------------------------------------------------
@@ -195,7 +184,7 @@ class CanaryQwenEngine(TranscriptionEngine):
         return torch_module.device("cuda" if torch_module.cuda.is_available() else "cpu")
 
     @staticmethod
-    def _resolve_asr_tokens(options: TranscriptionOptions) -> int:
+    def _resolve_asr_tokens(options: TranscriptionOptions | None) -> int:
         try:
             raw = options.params.get("max_new_tokens") if options and options.params else None
             return int(raw) if raw is not None else 256

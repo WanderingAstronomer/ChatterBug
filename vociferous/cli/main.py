@@ -6,17 +6,19 @@ import os
 import shutil
 import sys
 
-from vociferous.app import configure_logging, transcribe_workflow
+from vociferous.app import configure_logging, transcribe_file_workflow
+from vociferous.app.workflow import EngineWorker
 from vociferous.app.sinks import RefiningSink
-from vociferous.config import load_config
+from vociferous.config import load_config, get_segmentation_profile
 from vociferous.config.languages import WHISPER_LANGUAGES
-from vociferous.domain.model import EngineKind
+from vociferous.domain.model import EngineKind, EngineProfile
 from vociferous.domain.exceptions import (
     DependencyError, EngineError, AudioDecodeError, ConfigurationError
 )
 from vociferous.engines.factory import build_engine
 from vociferous.refinement.factory import build_refiner
 from vociferous.cli.helpers import build_sink, build_transcribe_configs_from_cli
+from vociferous.sources import FileSource
 from vociferous.cli.commands import (
     register_decode,
     register_vad,
@@ -24,6 +26,7 @@ from vociferous.cli.commands import (
     register_record,
     register_refine,
     register_deps,
+    register_bench,
 )
 
 try:
@@ -218,6 +221,7 @@ register_refine(app)        # rich_help_panel="Refinement Components"
 
 # Utility commands (available to all users)
 register_deps(app)          # rich_help_panel="Utilities"
+register_bench(app)         # rich_help_panel="Utilities"
 
 # User-tier commands are defined below: transcribe, languages, check
 
@@ -375,8 +379,11 @@ def transcribe(
 
     # Build engine and optional refiner
     refiner = None
+    engine_profile = EngineProfile(engine, bundle.engine_config, bundle.options)
+    engine_worker = None
     try:
         engine_adapter = build_engine(engine, bundle.engine_config)
+        engine_worker = EngineWorker(engine_profile, engine=engine_adapter)
         if bundle.refiner_config.enabled:
             refiner = build_refiner(bundle.refiner_config)
     except (DependencyError, EngineError) as exc:
@@ -417,6 +424,8 @@ def transcribe(
         )
         raise typer.Exit(code=2)
 
+    segmentation_profile = get_segmentation_profile(config)
+
     # Pretty startup banner
     file_size_mb = file.stat().st_size / (1024 * 1024)
     banner = Panel(
@@ -430,16 +439,15 @@ def transcribe(
     console.print(banner)
 
     try:
-        result = transcribe_workflow(
-            file,
-            engine_kind=engine,
-            engine_config=bundle.engine_config,
-            options=bundle.options,
-            keep_intermediates=keep_intermediates_choice,
-            artifact_config=config.artifacts,
+        result = transcribe_file_workflow(
+            FileSource(file),
+            engine_profile,
+            segmentation_profile,
             refine=refine_enabled,
             refine_instructions=refine_instructions if refine_enabled else None,
-            engine=engine_adapter,
+            keep_intermediates=keep_intermediates_choice,
+            artifact_config=config.artifacts,
+            engine_worker=engine_worker,
         )
         for segment in result.segments:
             sink.handle_segment(segment)

@@ -3,7 +3,7 @@
 import logging
 import structlog
 
-from .workflow import transcribe_workflow, transcribe_preprocessed  # noqa: F401
+from .workflow import transcribe_file_workflow, transcribe_workflow  # noqa: F401
 
 def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -24,7 +24,7 @@ def configure_logging() -> None:
 
 __all__ = [
     "transcribe_workflow",
-    "transcribe_preprocessed",
+    "transcribe_file_workflow",
     "configure_logging",
 ]
 

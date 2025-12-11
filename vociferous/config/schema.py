@@ -8,12 +8,17 @@ from typing import Mapping
 import tomllib
 import tomli_w
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from vociferous.domain.model import (
     DEFAULT_CANARY_MODEL,
     DEFAULT_MODEL_CACHE_DIR,
+    DEFAULT_WHISPER_MODEL,
+    EngineConfig,
     EngineKind,
+    EngineProfile,
+    SegmentationProfile,
+    TranscriptionOptions,
 )
 from vociferous.config.migrations import migrate_raw_config
 
@@ -39,6 +44,98 @@ class ArtifactConfig(BaseModel):
         default="{input_stem}_{step}.{ext}",
         description="Filename pattern for intermediate artifacts",
     )
+
+
+class EngineProfileConfig(BaseModel):
+    """Declarative engine profile mapping to EngineProfile dataclass."""
+
+    kind: EngineKind
+    model_name: str = DEFAULT_CANARY_MODEL
+    compute_type: str = "auto"
+    device: str = "auto"
+    model_cache_dir: str | None = Field(default_factory=lambda: str(DEFAULT_MODEL_CACHE_DIR))
+    params: Mapping[str, str] = Field(default_factory=dict)
+    max_audio_chunk_seconds: float | None = None
+    language: str = "en"
+
+    def to_profile(self) -> EngineProfile:
+        engine_config = EngineConfig(
+            model_name=self.model_name,
+            compute_type=self.compute_type,
+            device=self.device,
+            model_cache_dir=self.model_cache_dir,
+            params=self.params,
+        )
+        options = TranscriptionOptions(language=self.language, max_duration_s=self.max_audio_chunk_seconds)
+        return EngineProfile(kind=self.kind, config=engine_config, options=options)
+
+
+class SegmentationProfileConfig(BaseModel):
+    """Declarative segmentation profile for Silero VAD + condense."""
+
+    threshold: float = 0.5
+    min_silence_ms: int = 500
+    min_speech_ms: int = 250
+    speech_pad_ms: int = 250
+    max_speech_duration_s: float = 40.0
+    boundary_margin_ms: int = 250
+    min_gap_for_split_s: float = 2.0
+    sample_rate: int = 16000
+    device: str = "cpu"
+    vad_model: str | None = None
+
+    @field_validator("threshold")
+    @classmethod
+    def validate_threshold(cls, v: float) -> float:
+        if not 0.0 < v < 1.0:
+            raise ValueError("threshold must be between 0 and 1")
+        return v
+
+    @field_validator(
+        "min_silence_ms",
+        "min_speech_ms",
+        "speech_pad_ms",
+        "boundary_margin_ms",
+    )
+    @classmethod
+    def validate_non_negative(cls, v: int) -> int:
+        if v < 0:
+            raise ValueError("values must be non-negative")
+        return v
+
+    @field_validator("max_speech_duration_s")
+    @classmethod
+    def validate_positive(cls, v: float) -> float:
+        if v <= 0:
+            raise ValueError("max_speech_duration_s must be positive")
+        return v
+
+    @field_validator("min_gap_for_split_s")
+    @classmethod
+    def validate_gap(cls, v: float) -> float:
+        if v < 0:
+            raise ValueError("min_gap_for_split_s must be non-negative")
+        return v
+
+    @field_validator("sample_rate")
+    @classmethod
+    def validate_sample_rate(cls, v: int) -> int:
+        if v <= 0:
+            raise ValueError("sample_rate must be positive")
+        return v
+
+    def to_profile(self) -> SegmentationProfile:
+        return SegmentationProfile(
+            threshold=self.threshold,
+            min_silence_ms=self.min_silence_ms,
+            min_speech_ms=self.min_speech_ms,
+            speech_pad_ms=self.speech_pad_ms,
+            max_speech_duration_s=self.max_speech_duration_s,
+            boundary_margin_ms=self.boundary_margin_ms,
+            min_gap_for_split_s=self.min_gap_for_split_s,
+            sample_rate=self.sample_rate,
+            device=self.device,
+        )
 
 
 class AppConfig(BaseModel):
@@ -68,6 +165,18 @@ class AppConfig(BaseModel):
     
     # Artifact handling for intermediate files
     artifacts: ArtifactConfig = Field(default_factory=ArtifactConfig)
+
+    # Declarative profiles
+    engine_profiles: dict[str, EngineProfileConfig] = Field(default_factory=dict)
+    segmentation_profiles: dict[str, SegmentationProfileConfig] = Field(default_factory=dict)
+    default_engine_profile: str = Field(
+        default="canary_qwen_fp16",
+        description="Default engine profile key",
+    )
+    default_segmentation_profile: str = Field(
+        default="default",
+        description="Default segmentation profile key",
+    )
     
     # Engine-specific parameters (for future extensibility)
     params: Mapping[str, str] = Field(
@@ -108,6 +217,28 @@ class AppConfig(BaseModel):
                 }
             return super().model_validate(data, *args, **kwargs)
         return super().model_validate(obj, *args, **kwargs)
+
+
+
+    @model_validator(mode="after")
+    def inject_and_validate_profiles(self) -> "AppConfig":
+        """Inject default profiles if empty and validate profile references."""
+        # Inject defaults if profiles are empty
+        if not self.engine_profiles:
+            self.engine_profiles = _default_engine_profiles()  # type: ignore[misc]
+        if not self.segmentation_profiles:
+            self.segmentation_profiles = _default_segmentation_profiles()  # type: ignore[misc]
+        
+        # Validate profile references
+        if self.default_engine_profile not in self.engine_profiles:
+            available = ", ".join(sorted(self.engine_profiles)) or "<none>"
+            raise ValueError(f"default_engine_profile '{self.default_engine_profile}' not found. Available: {available}")
+        
+        if self.default_segmentation_profile not in self.segmentation_profiles:
+            available = ", ".join(sorted(self.segmentation_profiles)) or "<none>"
+            raise ValueError(f"default_segmentation_profile '{self.default_segmentation_profile}' not found. Available: {available}")
+        
+        return self
 
     @classmethod
     def from_dict(cls, data: Mapping[str, object]) -> "AppConfig":
@@ -180,3 +311,50 @@ def save_config(config: AppConfig, config_path: Path | None = None) -> None:
     # Write to TOML file
     with open(config_path, "wb") as f:
         tomli_w.dump(config_dict, f)
+
+
+def _default_engine_profiles() -> dict[str, EngineProfileConfig]:
+    return {
+        "canary_qwen_fp16": EngineProfileConfig(
+            kind="canary_qwen",
+            compute_type="float16",
+            device="auto",
+            model_name=DEFAULT_CANARY_MODEL,
+        ),
+        "whisper_turbo_default": EngineProfileConfig(
+            kind="whisper_turbo",
+            compute_type="float16",
+            device="auto",
+            model_name=DEFAULT_WHISPER_MODEL,
+        ),
+    }
+
+
+def _default_segmentation_profiles() -> dict[str, SegmentationProfileConfig]:
+    return {
+        "default": SegmentationProfileConfig(),
+    }
+
+
+def get_engine_profile(config: AppConfig, name: str | None = None) -> EngineProfile:
+    """Return an EngineProfile by name or the configured default."""
+
+    profile_name = name or config.default_engine_profile
+    try:
+        profile_cfg = config.engine_profiles[profile_name]
+    except KeyError:
+        available = ", ".join(sorted(config.engine_profiles)) or "<none>"
+        raise KeyError(f"Engine profile '{profile_name}' not found. Available: {available}")
+    return profile_cfg.to_profile()
+
+
+def get_segmentation_profile(config: AppConfig, name: str | None = None) -> SegmentationProfile:
+    """Return a SegmentationProfile by name or the configured default."""
+
+    profile_name = name or config.default_segmentation_profile
+    try:
+        profile_cfg = config.segmentation_profiles[profile_name]
+    except KeyError:
+        available = ", ".join(sorted(config.segmentation_profiles)) or "<none>"
+        raise KeyError(f"Segmentation profile '{profile_name}' not found. Available: {available}")
+    return profile_cfg.to_profile()

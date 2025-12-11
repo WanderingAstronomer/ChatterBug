@@ -12,10 +12,11 @@ from typing import Iterator
 from vociferous.audio.decoder import AudioDecoder, FfmpegDecoder, WavDecoder
 from vociferous.audio.utilities import apply_noise_gate, trim_trailing_silence
 from vociferous.domain.exceptions import ConfigurationError
-from vociferous.domain.model import AudioChunk, AudioSource
+from vociferous.domain.model import AudioChunk
+from vociferous.sources.base import Source
 
 
-class FileSource(AudioSource):
+class FileSource(Source):
     """Streams normalized chunks from a decoded file.
     
     Example:
@@ -47,6 +48,17 @@ class FileSource(AudioSource):
         self.chunk_ms = chunk_ms
         self.trim_tail_ms = trim_tail_ms
         self.noise_gate_db = noise_gate_db
+
+    def resolve_to_path(self, work_dir: Path | None = None) -> Path:
+        """Return the underlying file path after validation.
+
+        work_dir is accepted for interface parity but unused for files.
+        """
+        if not self.path.exists():
+            raise FileNotFoundError(f"Audio file not found: {self.path}")
+        if not self.path.is_file():
+            raise ConfigurationError(f"Path is not a file: {self.path}")
+        return self.path
 
     def stream(self) -> Iterator[AudioChunk]:
         """Decode and yield audio chunks.

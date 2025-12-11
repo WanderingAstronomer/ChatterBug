@@ -11,13 +11,12 @@ from typing import Mapping
 from vociferous.config.schema import AppConfig
 from vociferous.domain import EngineConfig, TranscriptSink
 from vociferous.domain.model import (
-    AudioSource,
     EngineKind,
     TranscriptionOptions,
 )
 from vociferous.engines.model_registry import normalize_model_name
 from vociferous.refinement.base import RefinerConfig
-from vociferous.sources import FileSource
+from vociferous.sources import FileSource, Source
 
 
 @dataclass
@@ -162,7 +161,7 @@ def build_audio_source(
     *,
     audio_path: Path,
     cache_dir: Path | None = None,
-) -> AudioSource:
+) -> Source:
     """Build audio source from path.
     
     Args:
@@ -170,6 +169,6 @@ def build_audio_source(
         cache_dir: Optional cache directory for intermediate files
         
     Returns:
-        AudioSource implementation
+        Source implementation
     """
     return FileSource(audio_path)

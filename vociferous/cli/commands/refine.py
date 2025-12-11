@@ -22,11 +22,17 @@ def register_refine(app: typer.Typer) -> None:
             metavar="PATH",
             help="Write refined text to file (default: stdout)",
         ),
+        mode: str | None = typer.Option(
+            None,
+            "--mode",
+            help="Refinement mode: grammar_only (default), summary, bullet_points",
+            show_default=False,
+        ),
         instructions: str | None = typer.Option(
             None,
             "--instructions",
             "-i",
-            help="Optional refinement instructions to guide the LLM",
+            help="Custom refinement instructions (overrides mode)",
             show_default=False,
         ),
         model: str | None = typer.Option(
@@ -41,7 +47,18 @@ def register_refine(app: typer.Typer) -> None:
         gpu_layers: int = typer.Option(0, help="GPU layers for llama-cpp refiners"),
         context_length: int = typer.Option(2048, help="Context length for llama-cpp refiners"),
     ) -> None:
-        """Refine a transcript text file using the refinement module."""
+        """Refine a transcript text file using Canary-Qwen LLM.
+
+        MODES:
+            grammar_only   - Fix grammar, punctuation, capitalization (default)
+            summary        - Produce a concise summary of key points
+            bullet_points  - Convert to structured bullet points
+
+        EXAMPLES:
+            vociferous refine transcript.txt -o refined.txt
+            vociferous refine transcript.txt --mode summary
+            vociferous refine transcript.txt --instructions \"Make it formal\"
+        """
         if not input.exists():
             typer.echo(f"Error: transcript not found: {input}", err=True)
             raise typer.Exit(code=2)
@@ -83,7 +100,9 @@ def register_refine(app: typer.Typer) -> None:
             typer.echo(f"Refiner initialization error: {exc}", err=True)
             raise typer.Exit(code=3) from exc
 
-        refined = refiner.refine(raw_text, instructions)
+        # Use mode if no custom instructions provided
+        effective_mode = mode or "grammar_only"
+        refined = refiner.refine(raw_text, instructions) if instructions else refiner.refine(raw_text, _get_prompt_for_mode(effective_mode))
 
         if output:
             output.write_text(refined, encoding="utf-8")
@@ -92,4 +111,8 @@ def register_refine(app: typer.Typer) -> None:
             typer.echo(refined)
 
     refine_cmd.dev_only = True  # type: ignore[attr-defined]
-    return None
+
+def _get_prompt_for_mode(mode: str) -> str | None:
+    """Resolve prompt template for mode."""
+    from vociferous.refinement import PROMPT_TEMPLATES
+    return PROMPT_TEMPLATES.get(mode)

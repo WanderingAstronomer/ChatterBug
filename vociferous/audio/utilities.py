@@ -7,9 +7,11 @@ validation, chunking, and audio manipulation.
 from __future__ import annotations
 
 import array
+import subprocess
+from pathlib import Path
 from typing import Iterator
 
-from vociferous.domain.exceptions import ConfigurationError
+from vociferous.domain.exceptions import AudioDecodeError, ConfigurationError
 from vociferous.domain.model import AudioChunk
 
 
@@ -115,3 +117,36 @@ def trim_trailing_silence(
     if last_idx < len(arr) - 1:
         arr = arr[: last_idx + 1]
     return arr.tobytes()
+
+
+def get_audio_duration(audio_path: Path) -> float:
+    """Get audio file duration in seconds using ffprobe.
+    
+    Args:
+        audio_path: Path to audio file
+        
+    Returns:
+        Duration in seconds
+        
+    Raises:
+        AudioDecodeError: If ffprobe fails or file is invalid
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-show_entries", "format=duration",
+                "-of", "default=noprint_wrappers=1:nokey=1",
+                str(audio_path),
+            ],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        duration_str = result.stdout.strip()
+        return float(duration_str)
+    except subprocess.CalledProcessError as exc:
+        raise AudioDecodeError(f"Failed to get duration for {audio_path}: {exc.stderr}") from exc
+    except ValueError as exc:
+        raise AudioDecodeError(f"Invalid duration output from ffprobe: {duration_str}") from exc

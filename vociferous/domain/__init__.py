@@ -2,7 +2,6 @@
 
 from .model import (  # noqa: F401
     AudioChunk,
-    AudioSource,
     EngineConfig,
     EngineKind,
     EngineMetadata,
@@ -11,6 +10,7 @@ from .model import (  # noqa: F401
     TranscriptionRequest,
     TranscriptionResult,
     TranscriptionOptions,
+    RefinementEngine,
     TranscriptSink,
 )
 from .constants import (  # noqa: F401
@@ -22,13 +22,11 @@ from .exceptions import (  # noqa: F401
     EngineError,
     AudioDecodeError,
     ConfigurationError,
-    SessionError,
     DependencyError,
 )
 
 __all__ = [
     "AudioChunk",
-    "AudioSource",
     "EngineConfig",
     "EngineKind",
     "EngineMetadata",
@@ -37,6 +35,7 @@ __all__ = [
     "TranscriptionRequest",
     "TranscriptionResult",
     "TranscriptionOptions",
+    "RefinementEngine",
     "TranscriptSink",
     "Device",
     "ComputeType",
@@ -44,6 +43,5 @@ __all__ = [
     "EngineError",
     "AudioDecodeError",
     "ConfigurationError",
-    "SessionError",
     "DependencyError",
 ]

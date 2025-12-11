@@ -22,6 +22,8 @@ def register_vad(app: typer.Typer) -> None:
         threshold: float = typer.Option(0.5, help="VAD threshold (0-1, higher = stricter)"),
         min_silence_ms: int = typer.Option(500, help="Minimum silence between segments (ms)"),
         min_speech_ms: int = typer.Option(250, help="Minimum speech duration (ms)"),
+        speech_pad_ms: int = typer.Option(250, help="Padding added to segment boundaries (ms)"),
+        max_speech_duration_s: float = typer.Option(40.0, help="Max duration for any speech segment (s)"),
     ) -> None:
         typer.echo(f"Detecting speech in {input}...")
         if not input.exists():
@@ -38,6 +40,8 @@ def register_vad(app: typer.Typer) -> None:
                 threshold=threshold,
                 min_silence_ms=min_silence_ms,
                 min_speech_ms=min_speech_ms,
+                speech_pad_ms=speech_pad_ms,
+                max_speech_duration_s=max_speech_duration_s,
             )
         except FileNotFoundError as exc:
             typer.echo("ffmpeg not found. Install ffmpeg and retry.", err=True)

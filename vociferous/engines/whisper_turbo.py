@@ -67,18 +67,20 @@ class WhisperTurboEngine(TranscriptionEngine):
             precision=self.precision,
         )
 
-    def transcribe_file(self, audio_path: Path, options: TranscriptionOptions) -> list[TranscriptSegment]:
+    def transcribe_file(self, audio_path: Path, options: TranscriptionOptions | None = None) -> list[TranscriptSegment]:
         """Transcribe entire audio file in batch."""
         if self._model is None:
             raise DependencyError("Whisper model not loaded")
         
         audio = load_audio_file(audio_path)
+
+        resolved_options = options or TranscriptionOptions()
         
         # Transcribe with faster-whisper
         # IMPORTANT: vad_filter=False since we use manual VAD (Silero) in audio module
         segments_iter, _ = self._model.transcribe(
             audio,
-            language=options.language if options.language != "auto" else None,
+            language=resolved_options.language if resolved_options.language != "auto" else None,
             beam_size=1,  # Greedy decoding for speed
             word_timestamps=False,
             vad_filter=False,  # Disable internal VAD - we handle VAD manually
@@ -86,12 +88,13 @@ class WhisperTurboEngine(TranscriptionEngine):
         
         # Convert to domain segments
         result_segments: list[TranscriptSegment] = []
-        for seg in segments_iter:
+        for idx, seg in enumerate(segments_iter):
             result_segments.append(
                 TranscriptSegment(
-                    start_s=seg.start,
-                    end_s=seg.end,
-                    text=seg.text.strip(),
+                    id=f"segment-{idx}",
+                    start=seg.start,
+                    end=seg.end,
+                    raw_text=seg.text.strip(),
                 )
             )
         

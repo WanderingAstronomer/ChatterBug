@@ -1,7 +1,7 @@
 """O(n) audio condensation with intelligent splitting for long files.
 
 Uses FFmpeg concat demuxer for single-pass O(n) performance, with intelligent
-splitting for files exceeding maximum duration limits.
+splitting for files exceeding maximum duration limits (default: 40s chunks).
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ class FFmpegCondenser:
     
     Condenses audio by extracting only speech segments using FFmpeg's concat
     demuxer, achieving O(n) performance where n is the total audio duration.
-    For files exceeding max_duration_minutes, intelligently splits at silence
+    For files exceeding max_duration_s, intelligently splits at silence
     gaps to produce multiple output files.
     
     Example:
@@ -50,9 +50,9 @@ class FFmpegCondenser:
         audio_path: Path | str,
         speech_timestamps: list[dict[str, float]],
         output_dir: Path | None = None,
-        max_duration_minutes: int = 30,
-        min_gap_for_split_s: float = 5.0,
-        boundary_margin_s: float = 1.0,
+        max_duration_s: float = 40.0,
+        min_gap_for_split_s: float = 2.0,
+        boundary_margin_s: float = 0.25,
     ) -> list[Path]:
         """Condense audio, splitting intelligently if over max_duration.
         
@@ -60,9 +60,9 @@ class FFmpegCondenser:
             audio_path: Input audio file
             speech_timestamps: List of {'start': seconds, 'end': seconds} from SileroVAD
             output_dir: Directory for output (default: same as input)
-            max_duration_minutes: Maximum duration per file (default: 30)
-            min_gap_for_split_s: Minimum silence gap for safe split (default: 5.0)
-            boundary_margin_s: Silence preserved at file edges (default: 1.0)
+            max_duration_s: Maximum duration per condensed file (default: 40s)
+            min_gap_for_split_s: Minimum silence gap for safe split (default: 2.0s)
+            boundary_margin_s: Silence preserved at file edges (default: 0.25s)
             
         Returns:
             List of output file paths (1 if short, N if split)
@@ -82,8 +82,6 @@ class FFmpegCondenser:
         
         # Calculate total condensed duration
         total_duration_s = sum(ts['end'] - ts['start'] for ts in speech_timestamps)
-        max_duration_s = max_duration_minutes * 60
-        
         if total_duration_s <= max_duration_s:
             # Single file output
             output_path = output_dir / f"{audio_path.stem}_condensed.wav"

@@ -20,12 +20,19 @@
 
 **Legend:** ✅ Implemented · 🚧 In Progress · ❌ Not Started · 🔄 Needs Refactor
 
+### Domain Types and Contracts
+
+- `TranscriptSegment` is a frozen dataclass with `id`, `start`, `end`, `raw_text`, and optional `refined_text`/`language`/`confidence`; legacy accessors `text`, `start_s`, and `end_s` remain for compatibility.
+- `TranscriptionEngine` protocol: batch-only `transcribe_file(audio_path: Path, options: TranscriptionOptions | None = None) -> list[TranscriptSegment]` plus `metadata` for device/precision reporting.
+- `RefinementEngine` protocol: `refine_segments(list[TranscriptSegment], instructions|None) -> list[TranscriptSegment]` for grammar/punctuation-only second pass.
+
 ### Audio Module Hardening
 
 - Centralize audio utility exports from `vociferous.audio` (`chunk_pcm_bytes`, `apply_noise_gate`, etc.) to keep a single import surface.
 - Decoder advertises format support only when FFmpeg is discoverable; WAV detection normalizes extensions consistently.
 - Silero VAD path now fails fast when the dependency is missing or invalid parameters are provided.
-- Recorder enforces configured sample width; condenser raises when called without timestamps and cleans temp concat lists via context.
+- Silero VAD pads/merges spans and enforces ≤40s segments by default (configurable via `speech_pad_ms`/`max_speech_duration_s`).
+- Recorder enforces configured sample width; condenser raises when called without timestamps and cleans temp concat lists via context; condensation uses seconds-based 40s chunking with silence-gap splitting.
 - All audio contract tests use real files from `tests/audio/sample_audio/` - no mocks.
 
 ### Engines Module Updates
@@ -432,6 +439,14 @@ graph LR
 
 - Workflow orchestration is explicit and stateless—there is no `TranscriptionSession` or `SegmentArbiter`. Canary ASR receives condensed audio and must emit non-overlapping segments; refinement is a second pass over the resulting text.
 
+### Canonical Workflow (app)
+
+`transcribe_file_workflow(source, engine_profile, segmentation_profile, refine=True)` encodes the pipeline once:
+- `source.resolve_to_path()` yields a real file (file/mic/etc.)
+- `decode → vad → condense` with Silero parameters from `SegmentationProfile`, splitting to ≤40s chunks
+- `EngineWorker` loads the chosen engine once and transcribes each condensed chunk (timestamps offset by chunk order)
+- Optional refinement runs via the engine seam, which can later be swapped for an out-of-process worker.
+
 
 ---
 
@@ -507,12 +522,42 @@ vociferous transcribe audio.wav --engine canary_qwen --refine \
   --refinement-instructions "Medical terminology, formal tone"
 ```
 
+### **Refinement Modes**
+
+The refinement module now supports multiple named modes with centralized prompt templates:
+
+**Available Modes:**
+- `grammar_only` (default) - Fix grammar, punctuation, capitalization, remove fillers
+- `summary` - Produce a concise summary of key points
+- `bullet_points` - Convert to structured bullet points
+
+**CLI Usage:**
+```bash
+# Default grammar refinement
+vociferous refine transcript.txt
+
+# Summary mode
+vociferous refine transcript.txt --mode summary
+
+# Custom instructions override
+vociferous refine transcript.txt --instructions "Make it formal"
+```
+
+**Segment-Based Refinement:**
+
+The refinement module operates on `list[TranscriptSegment]` to preserve timestamp alignment:
+- Accepts segments with `raw_text`
+- Returns same segments with `refined_text` filled in
+- Never drops or reorders segments
+- Maintains temporal alignment for downstream tools
+
 ### **Design Rationale**
 
 1. **Separation of Concerns:** Speech recognition and text refinement are fundamentally different tasks
 2. **Flexibility:** Users can skip refinement for speed or run it for quality
 3. **Performance:** Single model load, dual-purpose usage maximizes efficiency
 4. **Quality:** Dedicated refinement pass produces better results than single-pass ASR
+5. **Alignment Preservation:** Segment-based refinement keeps timestamps intact for subtitle generation, etc.
 
 ---
 
@@ -719,7 +764,7 @@ Vociferous is organized into **9 modules**, each with a clear responsibility and
 | **app** | Workflow orchestration | ❌ No | Transparent workflow functions (no sessions, no arbiters) |
 | **config** | Configuration management | ❌ No | Settings, defaults, config file handling |
 | **domain** | Core domain models & protocols | ❌ No | Typed data structures, contracts, errors |
-| **sources** | Audio input abstractions | ❌ No | File/memory/microphone sources producing files |
+| **sources** | Audio input abstractions | ❌ No | File/memory/microphone sources producing files (FileSource, MemorySource, MicSource) |
 | **gui** | Graphical user interface | ❌ No (separate interface) | KivyMD GUI wrapper around workflows |
 
 **Notes:**
@@ -728,6 +773,7 @@ Vociferous is organized into **9 modules**, each with a clear responsibility and
 - Engines and refinement are infrastructure invoked by workflows; not exposed as standalone CLI commands.
 - The `app` module coordinates workflows explicitly—there is **no** `TranscriptionSession` or `SegmentArbiter`.
 - **Audio module contains only primitives** (decoder, VAD, condenser, recorder classes); **CLI adapters** (DecoderComponent, VADComponent, etc.) are in `cli.components`.
+- **Config module centralizes profiles**: engine profiles (kind, precision, model name) and segmentation profiles (Silero VAD/condense parameters) live in `~/.config/vociferous/config.toml` with defaults `canary_qwen_fp16` and `default`.
 
 ### **Module Organization Principles**
 
@@ -751,7 +797,19 @@ These modules are called by workflows, not directly by users:
 These modules provide supporting functionality:
 - Configuration management
 - Data structure definitions
-- I/O abstractions that emit files for downstream processing
+- I/O abstractions that emit files for downstream processing (FileSource, MemorySource, MicSource)
+
+**Sources Abstractions**
+
+All sources are file-first and resolve to a concrete path before the audio pipeline runs:
+- `FileSource(path)` – validates file input, feeds decode/VAD/condense
+- `MemorySource(pcm, sample_rate, channels)` – wraps in-memory PCM into a temporary WAV
+- `MicSource(duration_seconds, recorder=...)` – records a bounded clip (defaults to `SoundDeviceRecorder`, recorder injectable for tests)
+
+Design principles:
+- No streaming surfaces exposed beyond file outputs
+- Duration-bound microphone capture to avoid interactive hangs
+- Dependency injection for recorders enables hardware-free testing
 
 ---
 
@@ -765,6 +823,7 @@ Vociferous provides separate help interfaces for users and developers:
 
 These are production-ready commands intended for end users:
 - `vociferous transcribe` - Complete transcription workflow
+- `vociferous bench` - Benchmark pipeline performance with RTF metrics
 - `vociferous languages` - List supported languages
 - `vociferous check` - Verify system dependencies
 
@@ -784,6 +843,49 @@ These are individual components for debugging and development:
 - **Developers** need access to individual components for debugging
 - Separating help prevents overwhelming users with internal details
 - Makes component-level testing possible without exposing complexity
+
+---
+
+## Benchmark & Performance Contracts
+
+### **Bench Command**
+
+The `bench` command provides performance testing and RTF (Real-Time Factor) measurement across audio corpora:
+
+```bash
+# Basic benchmark with default profiles
+vociferous bench ./test_corpus/
+
+# Custom engine and segmentation profiles
+vociferous bench ./corpus/ \
+  --engine-profile canary_qwen_bf16 \
+  --segmentation-profile aggressive
+
+# Enable refinement (increases processing time)
+vociferous bench ./corpus/ --refine
+
+# Benchmark specific file types
+vociferous bench ./corpus/ --pattern "*.mp3"
+```
+
+**Metrics:**
+- **RTF (Real-Time Factor):** `wall_clock_time / audio_duration` — lower is better
+- **Throughput:** `total_audio_seconds / wall_clock_time` — how many seconds of audio processed per second
+- **Per-file breakdown:** Duration, wall time, and RTF for each file
+- **Aggregate statistics:** Total duration, total wall time, aggregate RTF, overall throughput
+
+**Performance Rating:**
+- RTF < 0.1: Excellent (>10x realtime) — green
+- RTF < 0.5: Good (>2x realtime) — yellow  
+- RTF ≥ 0.5: Below realtime — red
+
+**Use Cases:**
+- Validate engine configuration changes
+- Compare profile performance (FP16 vs BF16, different VAD settings)
+- Establish performance baselines before optimization
+- Verify RTF targets (e.g., ≥30x realtime for 3090, ≥200x stretch goal)
+
+**Future:** WER calculation support via `--reference-dir` (flagged for implementation)
 
 ---
 

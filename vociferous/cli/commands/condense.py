@@ -22,8 +22,9 @@ def register_condense(app: typer.Typer) -> None:
             metavar="PATH",
             help="Optional output path (default: <audio>_condensed.wav)",
         ),
-        margin_ms: int = typer.Option(1000, help="Silence margin to keep at edges (ms)"),
-        max_duration_min: int = typer.Option(30, help="Maximum duration per output file (minutes)"),
+        margin_ms: int = typer.Option(250, help="Silence margin to keep at edges (ms)"),
+        max_duration_s: float = typer.Option(40.0, help="Maximum duration per output file (seconds)"),
+        min_gap_for_split_s: float = typer.Option(2.0, help="Minimum silence gap to split long outputs (seconds)"),
     ) -> None:
         if not timestamps_json.exists():
             typer.echo(f"Error: timestamps file not found: {timestamps_json}", err=True)
@@ -45,7 +46,8 @@ def register_condense(app: typer.Typer) -> None:
                 audio,
                 output_path=output,
                 margin_ms=margin_ms,
-                max_duration_min=max_duration_min,
+                max_duration_s=max_duration_s,
+                min_gap_for_split_s=min_gap_for_split_s,
             )
         except ValueError as exc:
             typer.echo(str(exc), err=True)

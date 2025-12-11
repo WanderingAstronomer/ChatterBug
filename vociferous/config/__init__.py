@@ -1,5 +1,17 @@
 """Config loading and validation."""
 
-from .schema import AppConfig, load_config, save_config  # noqa: F401
+from .schema import (  # noqa: F401
+	AppConfig,
+	load_config,
+	save_config,
+	get_engine_profile,
+	get_segmentation_profile,
+)
 
-__all__ = ["AppConfig", "load_config", "save_config"]
+__all__ = [
+	"AppConfig",
+	"load_config",
+	"save_config",
+	"get_engine_profile",
+	"get_segmentation_profile",
+]

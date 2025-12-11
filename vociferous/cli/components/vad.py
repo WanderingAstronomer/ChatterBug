@@ -20,6 +20,8 @@ class VADComponent:
         threshold: float = 0.5,
         min_silence_ms: int = 500,
         min_speech_ms: int = 250,
+        speech_pad_ms: int = 250,
+        max_speech_duration_s: float = 40.0,
     ) -> list[dict[str, Any]]:
         """Detect speech timestamps and optionally write JSON."""
         return self._vad.detect_speech(
@@ -27,6 +29,8 @@ class VADComponent:
             threshold=threshold,
             min_silence_ms=min_silence_ms,
             min_speech_ms=min_speech_ms,
+            speech_pad_ms=speech_pad_ms,
+            max_speech_duration_s=max_speech_duration_s,
             save_json=True,
             output_path=output_path,
         )
