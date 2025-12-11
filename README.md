@@ -11,10 +11,10 @@ Local-first ASR with Canary-Qwen dual-pass as the primary engine, plus legacy Wh
 ## Installation
 - Base install (includes faster-whisper and Silero VAD): `pip install -e .` or `pip install -r requirements.txt`
 - Optional extras:
-        - `pip install -e .[polish]` for grammar/fluency polishing (llama.cpp + HF hub download)
-        - `pip install -e .[gui]` for the Vociferous GUI (KivyMD-based graphical interface)
-        - `pip install -e .[voxtral]` for Voxtral local transformer support (transformers + torch)
-        - `pip install -e .[dev]` for tests, typing, and linting tools
+    - `pip install -e .[polish]` for grammar/fluency polishing (llama.cpp + HF hub download)
+    - `pip install -e .[gui]` for the Vociferous GUI (KivyMD-based graphical interface)
+    - `pip install -e .[voxtral]` for Voxtral local transformer support (transformers + torch)
+    - `pip install -e .[dev]` for tests, typing, and linting tools
 
 **Maintenance:** When changing runtime dependencies in `pyproject.toml`, update `requirements.txt` to match so both install paths stay in sync.
 
