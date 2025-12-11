@@ -10,7 +10,8 @@ import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .vad import VadWrapper
+from vociferous.domain.exceptions import DependencyError
+from .vad import HAS_SILERO, VadWrapper
 
 if TYPE_CHECKING:
     pass
@@ -37,6 +38,9 @@ class SileroVAD:
             sample_rate: Sample rate for audio processing (default: 16000)
             device: Device for VAD model ('cpu' or 'cuda')
         """
+        if not HAS_SILERO:
+            raise DependencyError("silero-vad package required for SileroVAD")
+
         self.sample_rate = sample_rate
         self.device = device
         self._vad = VadWrapper(sample_rate=sample_rate, device=device)
@@ -70,7 +74,14 @@ class SileroVAD:
             [{'start': 0.5, 'end': 3.2}, {'start': 4.0, 'end': 7.5}]
         """
         from .decoder import FfmpegDecoder
-        
+
+        if not 0.0 <= threshold <= 1.0:
+            raise ValueError(f"threshold must be in [0.0, 1.0], got {threshold}")
+        if min_silence_ms < 0:
+            raise ValueError(f"min_silence_ms must be non-negative, got {min_silence_ms}")
+        if min_speech_ms < 0:
+            raise ValueError(f"min_speech_ms must be non-negative, got {min_speech_ms}")
+
         audio_path = Path(audio_path)
         
         # Decode audio to PCM

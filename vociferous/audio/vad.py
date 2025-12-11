@@ -1,8 +1,13 @@
+from __future__ import annotations
+
 import numpy as np
+from types import ModuleType
 from typing import Any, Callable, Protocol, Sequence, TYPE_CHECKING, cast
 
+from vociferous.domain.exceptions import ConfigurationError
+
 if TYPE_CHECKING:  # Import for type checking only; optional at runtime.
-    import torch as torch_mod
+    import torch
 
 try:
     from silero_vad import load_silero_vad
@@ -54,17 +59,25 @@ class NullVad:
 class VadWrapper:
     """Silero VAD adapter with GPU support and safe fallback."""
 
-    def __init__(self, sample_rate: int = 16000, device: str = "cpu"):
+    def __init__(self, sample_rate: int = 16000, device: str = "cpu") -> None:
+        if device not in ("cpu", "cuda"):
+            raise ValueError(f"device must be 'cpu' or 'cuda', got '{device}'")
+
         self.sample_rate = sample_rate
         self.device = device
-        self.model: Any | None = None
-        self._enabled = False
-        self._torch: Any | None = None
+        self.model: torch.nn.Module | None = None
+        self._enabled: bool = False
+        self._torch: ModuleType | None = None
 
         if not HAS_SILERO or load_silero_vad is None:
             return
 
         self._torch = self._try_import_torch()
+        if device == "cuda" and self._torch is None:
+            raise ConfigurationError(
+                "CUDA device requested but PyTorch with CUDA support is not installed; "
+                "install the appropriate torch build or use device='cpu'"
+            )
         if not self._torch:
             return
 
@@ -77,11 +90,12 @@ class VadWrapper:
             self.model = model
             if self.model is None:
                 return
-            if (
-                self._torch is not None
-                and device == "cuda"
-                and self._torch.cuda.is_available()
-            ):
+            if device == "cuda":
+                if not self._torch.cuda.is_available():
+                    raise ConfigurationError(
+                        "CUDA device requested but not available. "
+                        "Install PyTorch with CUDA support or use device='cpu'"
+                    )
                 self.model = self.model.to(device)
             self._enabled = True
         except Exception:
@@ -188,7 +202,7 @@ class VadWrapper:
         return spans
 
     @staticmethod
-    def _try_import_torch() -> Any | None:
+    def _try_import_torch() -> ModuleType | None:
         try:
             import torch as torch_mod  # type: ignore
         except ImportError:
@@ -202,4 +216,3 @@ class VadWrapper:
             return cast(SileroGetSpeechFn, get_speech_timestamps)
         except ImportError:
             return None
-

@@ -76,9 +76,10 @@ class FFmpegCondenser:
         output_dir = Path(output_dir)
         
         if not speech_timestamps:
-            # No speech detected - return empty list
-            logger.warning(f"No speech timestamps provided for {audio_path}")
-            return []
+            raise AudioProcessingError(
+                f"No speech timestamps provided for {audio_path}. "
+                "Run SileroVAD.detect_speech() before condensing audio."
+            )
         
         # Calculate total condensed duration
         total_duration_s = sum(ts['end'] - ts['start'] for ts in speech_timestamps)
@@ -117,9 +118,9 @@ class FFmpegCondenser:
             return
         
         # Create concat file list for FFmpeg
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as concat_file:
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=True) as concat_file:
             concat_path = Path(concat_file.name)
-            
+
             for i, ts in enumerate(timestamps):
                 start = ts['start']
                 end = ts['end']
@@ -137,9 +138,10 @@ class FFmpegCondenser:
                 concat_file.write(f"file '{audio_path.absolute()}'\n")
                 concat_file.write(f"inpoint {start}\n")
                 concat_file.write(f"outpoint {end}\n")
-        
-        try:
-            # Run FFmpeg with concat demuxer
+
+            concat_file.flush()
+
+            # Run FFmpeg with concat demuxer while concat file is alive
             cmd = [
                 self.ffmpeg_path,
                 "-nostdin",
@@ -152,21 +154,17 @@ class FFmpegCondenser:
                 "-acodec", "pcm_s16le",
                 str(output_path),
             ]
-            
+
             proc = subprocess.run(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 check=False,
             )
-            
+
             if proc.returncode != 0:
                 error_text = proc.stderr.decode(errors='ignore')
                 raise AudioDecodeError(f"FFmpeg condensation failed: {error_text}")
-                
-        finally:
-            # Clean up concat file
-            concat_path.unlink(missing_ok=True)
     
     def _condense_with_splitting(
         self,

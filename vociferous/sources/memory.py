@@ -86,7 +86,3 @@ class MemorySource(AudioSource):
             
             # Update global timestamp for next segment
             global_start_s += segment_duration_s
-
-
-# Alias for backward compatibility
-InMemoryAudioSource = MemorySource

@@ -4,6 +4,7 @@ from pathlib import Path
 import logging
 import os
 import shutil
+import sys
 
 from vociferous.app import configure_logging, transcribe_workflow
 from vociferous.app.sinks import RefiningSink
@@ -22,7 +23,6 @@ from vociferous.cli.commands import (
     register_condense,
     register_record,
     register_refine,
-    register_deps,
 )
 
 try:
@@ -93,13 +93,15 @@ class BrightTyperGroup(TyperGroup):
 
     def format_commands(self, ctx: click.Context, formatter: click.HelpFormatter) -> None:
         """Format commands with optional developer-tier visibility."""
-        show_dev_help = bool(ctx.params.get("dev_help", False))
+        # Check sys.argv since ctx.params isn't populated during help rendering
+        show_dev_help = "--dev-help" in sys.argv
 
         commands: list[tuple[str | None, str, str]] = []
         for subcommand in self.list_commands(ctx):
             cmd = self.get_command(ctx, subcommand)
             if cmd is None or cmd.hidden:
                 continue
+            # Filter developer-only commands when showing user help
             if not show_dev_help and getattr(cmd.callback, "dev_only", False):
                 continue
             help_text = cmd.get_short_help_str(limit=100)
@@ -110,6 +112,7 @@ class BrightTyperGroup(TyperGroup):
             return
 
         if show_dev_help:
+            # Developer help: show all commands organized by category
             sections: list[tuple[str, list[tuple[str, str]]]] = []
             panels = (
                 "Core Commands",
@@ -130,17 +133,41 @@ class BrightTyperGroup(TyperGroup):
                 with formatter.section(title):
                     for name, help_text in entries:
                         formatter.write_text(f"  {name:<15} {help_text}")
+            
+            formatter.write_text("\n[Developer Mode] These commands include low-level components for manual pipeline debugging.")
+            formatter.write_text("Most users should use 'transcribe' instead.")
         else:
-            with formatter.section("Commands"):
-                for _, name, help_text in commands:
-                    formatter.write_text(f"  {name:<15} {help_text}")
-            formatter.write_text("\nFor developer tools, use: vociferous --dev-help")
+            # User help: show only user-facing commands in simple list
+            # No section needed since panels are already shown by Typer's rich mode
+            pass  # Rich panels handle the grouping automatically
+
+class DevHelpAwareGroup(BrightTyperGroup):
+    """Extended TyperGroup that handles --dev-help command visibility."""
+    
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        """Override command retrieval to apply dev-only hiding."""
+        cmd = super().get_command(ctx, cmd_name)
+        if cmd is None:
+            return None
+        
+        # Check if we should show developer commands
+        show_dev_help = "--dev-help" in sys.argv
+        
+        # Hide developer-only commands unless --dev-help is present
+        if hasattr(cmd.callback, "dev_only") and cmd.callback.dev_only:
+            if not show_dev_help:
+                cmd.hidden = True
+            else:
+                cmd.hidden = False
+        
+        return cmd
 
 app = typer.Typer(
     help="""[bold cyan]Vociferous[/bold cyan] - Local-first speech transcription.
 No cloud. No telemetry. Local engines only.
 """,
-    cls=BrightTyperGroup,
+    epilog="[dim]For developer tools (decode, vad, condense, record), use: vociferous --dev-help[/dim]",
+    cls=DevHelpAwareGroup,
     rich_markup_mode="rich",
     pretty_exceptions_show_locals=False,
     no_args_is_help=False,
@@ -188,9 +215,6 @@ register_condense(app)      # rich_help_panel="Audio Components"
 register_record(app)        # rich_help_panel="Audio Components"
 register_refine(app)        # rich_help_panel="Audio Components"
 
-# Developer-tier: Dependency management
-register_deps(app)          # rich_help_panel="Utilities"
-
 # User-tier commands are defined below: transcribe, languages, check
 
 
@@ -206,8 +230,11 @@ def main_callback(
     ),
 ) -> None:
     """Show a clean welcome panel when no subcommand is provided."""
+    # Command visibility is handled by DevHelpAwareGroup.get_command()
+    # This callback only handles showing help or welcome when no subcommand given
+    
     if dev_help and ctx.invoked_subcommand is None:
-        ctx.params["dev_help"] = True
+        # Show help with developer commands visible
         console.print(ctx.command.get_help(ctx))
         raise typer.Exit(code=0)
 

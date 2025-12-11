@@ -20,6 +20,13 @@
 
 **Legend:** ✅ Implemented · 🚧 In Progress · ❌ Not Started · 🔄 Needs Refactor
 
+### Audio Module Hardening
+
+- Centralize audio utility exports from `vociferous.audio` (`chunk_pcm_bytes`, `apply_noise_gate`, etc.) to keep a single import surface.
+- Decoder advertises format support only when FFmpeg is discoverable; WAV detection normalizes extensions consistently.
+- Silero VAD path now fails fast when the dependency is missing or invalid parameters are provided.
+- Recorder enforces configured sample width; condenser raises when called without timestamps and cleans temp concat lists via context.
+
 ## Architecture Refactor Progress
 
 **Completed:**
@@ -27,6 +34,7 @@
 - [x] Real-file contract testing philosophy (no mocks)
 - [x] Module-based test organization
 - [x] Move CLI adapter components to cli.components (separation of concerns)
+- [x] Two-tier help system implementation (Issue #15)
 
 **In Progress:**
 - [ ] Canary-Qwen dual-pass architecture (Issue #9)
@@ -34,7 +42,6 @@
 - [ ] Remove TranscriptionSession (Issue #6)
 - [ ] Redesign transcribe workflow (Issue #7)
 - [ ] Rename polish → refinement (Issue #8)
-- [ ] Two-tier help system implementation (Issue #15)
 
 **Planned:**
 - [ ] Deprecate Whisper/Voxtral as primary engines (Issue #20)
@@ -251,7 +258,7 @@ def test_vad_detects_speech():
     """VAD detects speech in real audio file."""
 
     # ✅ Real file
-    audio_file = Path("samples/speech_30s.wav")
+    audio_file = Path("tests/audio/sample_audio/ASR_Test.flac")
 
     # ✅ Real CLI call
     result = subprocess.run(
@@ -262,7 +269,7 @@ def test_vad_detects_speech():
 
     # ✅ Real output verification
     assert result.returncode == 0
-    timestamps_file = Path("speech_30s_vad_timestamps.json")
+    timestamps_file = Path("ASR_Test_vad_timestamps.json")
     assert timestamps_file.exists()
 
     with open(timestamps_file) as f:
@@ -295,7 +302,7 @@ graph TD
     AP["app/"]
     G["gui/"]
     I["integration/"]
-    S["samples/"]
+    F["audio/sample_audio/"]
 
     T --> A
     T --> E
@@ -304,7 +311,7 @@ graph TD
     T --> AP
     T --> G
     T --> I
-    T --> S
+    T --> F
 
     A --> A1["test_decoder_contract.py"]
     A --> A2["test_vad_contract.py"]
@@ -329,9 +336,10 @@ graph TD
     I --> I1["test_full_pipeline.py"]
     I --> IA["artifacts/<br/>test outputs"]
 
-    S --> S1["speech_30s.flac"]
-    S --> S2["speech_30s.wav"]
-    S --> S3["silence_5s.wav"]
+    F --> F1["ASR_Test.flac"]
+    F --> F2["Recording 1.flac"]
+    F --> F3["Recording 2.flac"]
+    F --> F4["ASR_Test_Text.txt"]
 ```
 
 **Organization Principles:**
@@ -339,7 +347,8 @@ graph TD
 - Tests mirror the `src/` module structure
 - Each module has its own test directory
 - `artifacts/` subdirectories contain test outputs (overwritten each run)
-- `samples/` contains shared test audio files
+- `tests/audio/sample_audio/` contains shared test audio/text fixtures (moved from root `sample_audio/`)
+- `samples/` remains for user/demo audio outside automated tests
 - `integration/` tests full workflows across modules
 
 **Principle:** If a test passes, the component works. If it fails, the component is broken.
@@ -541,6 +550,8 @@ tests/
     artifacts/
       test_full_pipeline_output.txt
 ```
+
+**Fixtures:** Canonical audio/text inputs live in `tests/audio/sample_audio/` (moved from root `sample_audio/` to keep test inputs co-located with tests).
 
 **Behavior:**
 - Artifacts are **overwritten on each test run**
@@ -1205,20 +1216,23 @@ Shows only high-level commands for typical use cases.
 ```bash
 $ vociferous --help
 
-Usage: vociferous [OPTIONS] COMMAND
+Usage: vociferous [OPTIONS] COMMAND [ARGS]...
 
-Vociferous - Local-first AI transcription
+Vociferous - Local-first speech transcription. No cloud. No telemetry. Local engines only.
 
-Commands:
-  transcribe  Transcribe audio file to text
-  languages   List supported language codes
-  check       Verify system prerequisites
+╭─ Options ──────────────────────────────────────────────────────╮
+│ --dev-help          Show developer commands and components     │
+│ --help              Show this message and exit.                │
+╰────────────────────────────────────────────────────────────────╯
+╭─ Core Commands ────────────────────────────────────────────────╮
+│ transcribe   Transcribe an audio file to text using local ASR  │
+╰────────────────────────────────────────────────────────────────╯
+╭─ Utilities ────────────────────────────────────────────────────╮
+│ check        Verify system prerequisites before transcribing.  │
+│ languages    List all supported language codes                 │
+╰────────────────────────────────────────────────────────────────╯
 
-Options:
-  --help      Show this message and exit
-  --dev-help  Show developer commands
-
-Run 'vociferous COMMAND --help' for more information on a command.
+For developer tools (decode, vad, condense, record), use: vociferous --dev-help
 ```
 
 **Design Goal:** Keep it simple - users see only what they need for daily work.
@@ -1239,9 +1253,11 @@ Shows all components including low-level debugging tools.
 - `condense` - Remove silence using VAD timestamps
 - `record` - Capture microphone audio
 
+**Refinement Components:**
+- `refine` - Text-only refinement (CLI component; Canary LLM pass)
+
 **Workflow Commands:**
 - `transcribe` - Main transcription workflow (decode → VAD → condense → Canary ASR → Canary Refiner)
-- `refine` - Text-only refinement (planned CLI; Canary LLM pass)
 
 **Utilities:**
 - `languages` - List supported language codes
@@ -1252,31 +1268,32 @@ Shows all components including low-level debugging tools.
 ```bash
 $ vociferous --dev-help
 
-Usage: vociferous [OPTIONS] COMMAND
+Usage: vociferous [OPTIONS] COMMAND [ARGS]...
 
-Vociferous - Developer Commands
-(For debugging and manual pipeline construction)
+Vociferous - Local-first speech transcription. No cloud. No telemetry. Local engines only.
 
-Audio Components:
-  decode     Normalize audio to PCM mono 16kHz
-  vad        Detect speech boundaries
-  condense   Remove silence using VAD timestamps
-  record     Capture microphone audio
+╭─ Options ──────────────────────────────────────────────────────╮
+│ --dev-help          Show developer commands and components     │
+│ --help              Show this message and exit.                │
+╰────────────────────────────────────────────────────────────────╯
+╭─ Audio Components ─────────────────────────────────────────────╮
+│ decode                                                         │
+│ vad                                                            │
+│ condense                                                       │
+│ record                                                         │
+╰────────────────────────────────────────────────────────────────╯
+╭─ Refinement Components ────────────────────────────────────────╮
+│ refine       Refine a transcript text file using refinement    │
+╰────────────────────────────────────────────────────────────────╯
+╭─ Core Commands ────────────────────────────────────────────────╮
+│ transcribe   Transcribe an audio file to text using local ASR  │
+╰────────────────────────────────────────────────────────────────╯
+╭─ Utilities ────────────────────────────────────────────────────╮
+│ check        Verify system prerequisites before transcribing.  │
+│ languages    List all supported language codes                 │
+╰────────────────────────────────────────────────────────────────╯
 
-Workflow Commands:
-    transcribe   Main transcription workflow (decode → VAD → condense → Canary ASR → Canary Refiner)
-    refine       Text-only refinement (planned CLI; Canary LLM mode)
-
-Utilities:
-  languages  List supported language codes
-  check      Verify system prerequisites
-
-Options:
-  --help      Show user commands (simplified)
-  --dev-help  Show this developer help
-
-Note: These low-level components allow manual pipeline debugging.
-      Most users should use 'transcribe' instead.
+For developer tools (decode, vad, condense, record), use: vociferous --dev-help
 ```
 
 **Design Goal:** Full transparency - developers see everything.
@@ -1297,7 +1314,7 @@ Note: These low-level components allow manual pipeline debugging.
 
 - ✅ All commands from user help
 - ✅ Low-level audio processing components (decode, vad, condense)
-- ✅ Workflow orchestrators (transcribe) and refinement tools (planned `refine`)
+- ✅ Workflow orchestrators (transcribe) and refinement tools (`refine`)
 - ✅ Recording and capture tools
 - ✅ Everything needed for manual debugging
 
@@ -1308,53 +1325,63 @@ Note: These low-level components allow manual pipeline debugging.
 
 ---
 
-### **Implementation Notes**
+### **Implementation**
 
-**Current Status (as of December 2025):**
+**Status:** ✅ Implemented (December 2025)
 
-The CLI currently uses `rich_help_panel` in Typer to organize commands into visual groups:
+The two-tier help system is implemented via `DevHelpAwareGroup`, a custom Typer group class that dynamically hides/shows commands based on the presence of `--dev-help` in command-line arguments.
 
-- `"Core Commands"` - Main workflows (transcribe)
-- `"Utilities"` - Helper commands (languages, check)
-- `"Audio Components"` - Low-level components (decode, vad, condense)
+**Architecture:**
 
-**Future Implementation (Issue #15):**
+1. **Custom Group Class:** `DevHelpAwareGroup` extends `BrightTyperGroup`
+2. **Dynamic Visibility:** Overrides `get_command()` to check `sys.argv` for `--dev-help`
+3. **Command Marking:** Commands register as developer-only via `dev_only = True` attribute
+4. **Rich Panels:** Typer's `rich_help_panel` provides visual grouping
 
-The two-tier help system will be implemented by:
-
-1. Adding custom `--dev-help` flag handling in the main CLI callback
-2. Filtering visible commands based on which help flag is used
-3. Using Typer's command metadata to mark commands as "user" or "developer"
-4. Preserving the existing `rich_help_panel` for visual organization
-
-**Code Pattern for Categorizing Commands:**
+**Code Pattern:**
 
 ```python
-# User-facing command (appears in --help)
-@app.command(
-    rich_help_panel="Core Commands",
-    hidden=False,  # Visible in default help
-)
-def transcribe(...):
-    """Transcribe audio file to text."""
-    pass
-
-# Developer-facing command (only in --dev-help)
-@app.command(
-    rich_help_panel="Audio Components",
-    hidden=True,  # Hidden from default help, shown in --dev-help
-)
-def decode(...):
-    """Normalize audio to PCM mono 16kHz."""
-    pass
+class DevHelpAwareGroup(BrightTyperGroup):
+    """Extended TyperGroup that handles --dev-help command visibility."""
+    
+    def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
+        """Override command retrieval to apply dev-only hiding."""
+        cmd = super().get_command(ctx, cmd_name)
+        if cmd is None:
+            return None
+        
+        # Check if we should show developer commands
+        show_dev_help = "--dev-help" in sys.argv
+        
+        # Hide developer-only commands unless --dev-help is present
+        if hasattr(cmd.callback, "dev_only") and cmd.callback.dev_only:
+            if not show_dev_help:
+                cmd.hidden = True
+            else:
+                cmd.hidden = False
+        
+        return cmd
 ```
 
-**Testing Requirements:**
+**Command Registration:**
 
-- `vociferous --help` must show only user commands
-- `vociferous --dev-help` must show all commands
-- Both help outputs must be clear and well-organized
-- Command descriptions must be appropriate for their audience
+```python
+# Developer-facing command (hidden from --help, shown in --dev-help)
+def register_decode(app: typer.Typer) -> None:
+    @app.command("decode", rich_help_panel="Audio Components")
+    def decode_cmd(...):
+        """Normalize audio to PCM mono 16kHz."""
+        pass
+    
+    decode_cmd.dev_only = True  # Marks as developer-only
+```
+
+**Verification:**
+
+- ✅ `vociferous --help` shows only user commands (transcribe, check, languages)
+- ✅ `vociferous --dev-help` shows all commands including developer tools
+- ✅ Both outputs use Rich panels for clear visual organization
+- ✅ Commands remain fully functional regardless of visibility
 
 ---
 

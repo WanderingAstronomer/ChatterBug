@@ -3,8 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Protocol
 
+from vociferous.audio.utilities import chunk_pcm_bytes
+from vociferous.domain.exceptions import AudioDecodeError
 from vociferous.domain.model import AudioChunk
-from vociferous.domain.exceptions import AudioDecodeError, ConfigurationError
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class FfmpegDecoder:
 
     def __init__(self, ffmpeg_path: str = "ffmpeg") -> None:
         self.ffmpeg_path = ffmpeg_path
+        self._ffmpeg_available: bool | None = None
 
     def decode(self, source: str | bytes) -> DecodedAudio:
         import subprocess
@@ -88,10 +90,38 @@ class FfmpegDecoder:
         )
 
     def supports_format(self, extension_or_mime: str) -> bool:
-        return True
+        if self._ffmpeg_available is None:
+            self._ffmpeg_available = self._check_ffmpeg()
+        return self._ffmpeg_available
 
     def to_chunks(self, audio: DecodedAudio, chunk_ms: int) -> Iterable[AudioChunk]:
-        yield from _chunk_pcm_bytes(audio, chunk_ms)
+        yield from chunk_pcm_bytes(
+            audio.samples,
+            audio.sample_rate,
+            audio.channels,
+            chunk_ms,
+            audio.sample_width_bytes,
+        )
+
+    def _check_ffmpeg(self) -> bool:
+        import shutil
+        import subprocess
+
+        path = shutil.which(self.ffmpeg_path)
+        if path is None:
+            return False
+
+        try:
+            proc = subprocess.run(
+                [path, "-version"],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+        except OSError:
+            return False
+
+        return proc.returncode == 0
 
 
 class WavDecoder:
@@ -122,63 +152,14 @@ class WavDecoder:
         )
 
     def supports_format(self, extension_or_mime: str) -> bool:
-        return extension_or_mime.lower() in (".wav", "audio/wav", "wav")
+        normalized = extension_or_mime.strip().lower().lstrip(".")
+        return normalized in ("wav", "audio/wav")
 
     def to_chunks(self, audio: DecodedAudio, chunk_ms: int) -> Iterable[AudioChunk]:
-        yield from _chunk_pcm_bytes(audio, chunk_ms)
-
-
-def _chunk_pcm_bytes(audio: DecodedAudio, chunk_ms: int) -> Iterable[AudioChunk]:
-    bytes_per_second = audio.sample_rate * audio.channels * audio.sample_width_bytes
-    bytes_per_chunk = int(bytes_per_second * (chunk_ms / 1000))
-    if bytes_per_chunk <= 0:
-        raise ConfigurationError("Invalid chunk size computed for audio")
-
-    total = len(audio.samples)
-    offset = 0
-    start = 0.0
-    while offset < total:
-        end = min(offset + bytes_per_chunk, total)
-        chunk_bytes = audio.samples[offset:end]
-        if not chunk_bytes:
-            break
-        end_s = start + (len(chunk_bytes) / bytes_per_second)
-        yield AudioChunk(
-            samples=chunk_bytes,
-            sample_rate=audio.sample_rate,
-            channels=audio.channels,
-            start_s=start,
-            end_s=end_s,
+        yield from chunk_pcm_bytes(
+            audio.samples,
+            audio.sample_rate,
+            audio.channels,
+            chunk_ms,
+            audio.sample_width_bytes,
         )
-        offset += bytes_per_chunk
-        start = end_s
-
-
-def _apply_noise_gate(pcm: bytes, sample_width_bytes: int, threshold: int) -> bytes:
-    """Zero samples whose absolute value is below threshold (int16 only)."""
-    if sample_width_bytes != 2:
-        return pcm
-    import array
-
-    arr = array.array("h")
-    arr.frombytes(pcm)
-    for i, v in enumerate(arr):
-        if -threshold < v < threshold:
-            arr[i] = 0
-    return arr.tobytes()
-
-
-def _trim_trailing_silence(pcm: bytes, sample_width_bytes: int, threshold: int) -> bytes:
-    """Remove trailing samples below threshold (int16 only)."""
-    if sample_width_bytes != 2:
-        return pcm
-    import array
-
-    arr = array.array("h")
-    arr.frombytes(pcm)
-    last_idx = len(arr) - 1
-    while last_idx >= 0 and -threshold < arr[last_idx] < threshold:
-        last_idx -= 1
-    if last_idx < len(arr) - 1:
-        arr = arr[: last_idx + 1]
-    return arr.tobytes()

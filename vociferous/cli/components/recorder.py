@@ -27,7 +27,7 @@ class RecorderComponent:
 
     def default_output_path(self) -> Path:
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        recordings_dir = Path(__file__).resolve().parent.parent / "recordings"
+        recordings_dir = Path(__file__).resolve().parent.parent.parent / "audio" / "recordings"
         return recordings_dir / f"recording_{timestamp}.wav"
 
     def record_to_file(self, output_path: Path, stop_event: Event) -> Path:

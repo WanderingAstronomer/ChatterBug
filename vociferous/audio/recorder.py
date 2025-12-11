@@ -3,7 +3,7 @@ from __future__ import annotations
 from threading import Event
 from typing import Any, Iterable, Protocol
 
-from vociferous.domain.exceptions import DependencyError
+from vociferous.domain.exceptions import ConfigurationError, DependencyError
 
 
 class MicrophoneRecorder(Protocol):
@@ -52,7 +52,14 @@ class SoundDeviceRecorder:
         import queue
 
         blocksize = max(1, int(sample_rate * (chunk_ms / 1000)))
-        bytes_per_frame = sample_width_bytes * channels
+        actual_sample_width = self.sample_width_bytes
+        if sample_width_bytes != actual_sample_width:
+            raise ConfigurationError(
+                f"Requested {sample_width_bytes} bytes/sample but recorder "
+                f"configured for {actual_sample_width}"
+            )
+
+        bytes_per_frame = actual_sample_width * channels
         q: "queue.SimpleQueue[bytes]" = queue.SimpleQueue()
 
         def callback(indata: Any, frames: Any, time_info: Any, status: Any) -> None:
