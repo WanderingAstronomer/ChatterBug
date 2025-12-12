@@ -1,4 +1,4 @@
-"""Warm model server for fast inference.
+"""Warm model server for fast inference (FastAPI + uvicorn).
 
 The daemon keeps the Canary-Qwen model loaded in GPU memory,
 eliminating the ~16s model loading overhead for each transcription.
@@ -8,47 +8,47 @@ Usage:
     vociferous daemon stop    # Stop the server
     vociferous daemon status  # Check server status
     
-    # Transcribe using warm model (automatic if daemon is running)
-    vociferous transcribe audio.wav
+    # Transcribe using warm model (use --use-daemon flag)
+    vociferous transcribe audio.wav --use-daemon
 
 Programmatic usage:
     from vociferous.server import DaemonClient, is_daemon_running
     
     if is_daemon_running():
         client = DaemonClient()
-        segments = client.transcribe([Path("audio.wav")])
+        segments = client.transcribe(Path("audio.wav"))
 """
 
 from vociferous.server.client import (
     DaemonClient,
+    DaemonError,
+    DaemonNotRunningError,
+    DaemonTimeoutError,
     is_daemon_running,
     get_daemon_pid,
     transcribe_via_daemon,
+    refine_via_daemon,
+    batch_transcribe_via_daemon,
+    DEFAULT_DAEMON_HOST,
+    DEFAULT_DAEMON_PORT,
+    PID_FILE,
+    CACHE_DIR,
 )
-from vociferous.server.protocol import (
-    TranscribeRequest,
-    TranscribeResponse,
-    StatusRequest,
-    StatusResponse,
-    DEFAULT_SOCKET_PATH,
-    DEFAULT_PID_FILE,
-)
-from vociferous.server.daemon import run_daemon, WarmModelDaemon
 
 __all__ = [
     # Client
     "DaemonClient",
+    "DaemonError",
+    "DaemonNotRunningError",
+    "DaemonTimeoutError",
     "is_daemon_running",
     "get_daemon_pid",
     "transcribe_via_daemon",
-    # Protocol
-    "TranscribeRequest",
-    "TranscribeResponse",
-    "StatusRequest",
-    "StatusResponse",
-    "DEFAULT_SOCKET_PATH",
-    "DEFAULT_PID_FILE",
-    # Daemon
-    "run_daemon",
-    "WarmModelDaemon",
+    "refine_via_daemon",
+    "batch_transcribe_via_daemon",
+    # Constants
+    "DEFAULT_DAEMON_HOST",
+    "DEFAULT_DAEMON_PORT",
+    "PID_FILE",
+    "CACHE_DIR",
 ]

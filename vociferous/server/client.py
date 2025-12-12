@@ -1,191 +1,445 @@
-"""Client for communicating with the warm model daemon."""
+"""HTTP client for Vociferous daemon server.
+
+Provides a simple interface for communicating with the warm model daemon
+via HTTP, with proper error handling and convenient fallback functions.
+
+Usage:
+    from vociferous.server.client import DaemonClient, transcribe_via_daemon
+    
+    # Check if daemon is running
+    client = DaemonClient()
+    if client.ping():
+        segments = client.transcribe(Path("audio.wav"))
+    
+    # Or use convenience function (returns None if daemon unavailable)
+    segments = transcribe_via_daemon(Path("audio.wav"))
+"""
 
 from __future__ import annotations
 
-import asyncio
-import json
+import logging
 import os
-import socket
-from dataclasses import asdict
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
-from vociferous.server.protocol import (
-    DEFAULT_SOCKET_PATH,
-    DEFAULT_PID_FILE,
-    TranscribeRequest,
-    TranscribeResponse,
-    StatusRequest,
-    StatusResponse,
-    ShutdownRequest,
-    ShutdownResponse,
-)
+import requests
+from requests.exceptions import ConnectionError, RequestException, Timeout
+
+from vociferous.domain.model import TranscriptSegment
+from vociferous.domain.exceptions import VociferousError
 
 if TYPE_CHECKING:
-    from vociferous.domain.model import TranscriptSegment
+    pass
+
+logger = logging.getLogger(__name__)
+
+# Default daemon configuration
+DEFAULT_DAEMON_HOST = "127.0.0.1"
+DEFAULT_DAEMON_PORT = 8765
+DEFAULT_TIMEOUT_S = 60.0
+
+# Cache directory for PID file
+CACHE_DIR = Path.home() / ".cache" / "vociferous"
+PID_FILE = CACHE_DIR / "daemon.pid"
+
+
+# ============================================================================
+# Exceptions
+# ============================================================================
+
+
+class DaemonError(VociferousError):
+    """Base exception for daemon communication errors."""
+
+    pass
+
+
+class DaemonNotRunningError(DaemonError):
+    """Daemon is not running or unreachable."""
+
+    pass
+
+
+class DaemonTimeoutError(DaemonError):
+    """Daemon request timed out."""
+
+    pass
+
+
+# ============================================================================
+# Helper Functions
+# ============================================================================
 
 
 def is_daemon_running(
-    socket_path: Path = DEFAULT_SOCKET_PATH,
-    pid_file: Path = DEFAULT_PID_FILE,
+    host: str = DEFAULT_DAEMON_HOST,
+    port: int = DEFAULT_DAEMON_PORT,
 ) -> bool:
-    """Check if the daemon is running.
-    
-    Checks both the PID file and socket availability.
+    """Check if daemon is running by pinging health endpoint.
+
+    Args:
+        host: Daemon host address
+        port: Daemon port number
+
+    Returns:
+        True if daemon is running and model is loaded
     """
-    # Check PID file exists and process is alive
-    if not pid_file.exists():
+    try:
+        response = requests.get(
+            f"http://{host}:{port}/health",
+            timeout=2.0,
+        )
+        if response.ok:
+            data = response.json()
+            return data.get("model_loaded", False)
         return False
-    
+    except RequestException:
+        return False
+
+
+def get_daemon_pid(pid_file: Path = PID_FILE) -> int | None:
+    """Read daemon PID from PID file.
+
+    Args:
+        pid_file: Path to PID file
+
+    Returns:
+        PID if valid and process exists, None otherwise
+    """
+    if not pid_file.exists():
+        return None
+
     try:
         pid = int(pid_file.read_text().strip())
-        # Check if process exists (signal 0 doesn't send anything, just checks)
-        os.kill(pid, 0)
+        # Check if process is actually running
+        os.kill(pid, 0)  # Signal 0 just checks if process exists
+        return pid
     except (ValueError, ProcessLookupError, PermissionError):
-        return False
-    
-    # Also verify socket is accessible
-    if not socket_path.exists():
-        return False
-    
-    return True
+        # PID file is stale or invalid
+        return None
 
 
-def get_daemon_pid(pid_file: Path = DEFAULT_PID_FILE) -> int | None:
-    """Get the daemon PID if running."""
-    if not pid_file.exists():
-        return None
-    try:
-        return int(pid_file.read_text().strip())
-    except (ValueError, IOError):
-        return None
+# ============================================================================
+# Daemon Client
+# ============================================================================
 
 
 class DaemonClient:
-    """Client for the warm model daemon.
-    
-    Provides sync wrappers around async socket communication.
-    
-    Usage:
+    """HTTP client for communicating with warm model daemon.
+
+    Provides methods for transcription, refinement, and health checks
+    with proper error handling and timeout management.
+
+    Args:
+        host: Daemon host address (default: 127.0.0.1)
+        port: Daemon port number (default: 8765)
+        timeout: Request timeout in seconds (default: 60.0)
+
+    Example:
         client = DaemonClient()
-        if client.is_connected():
-            response = client.transcribe([Path("audio.wav")])
+        if client.ping():
+            segments = client.transcribe(Path("audio.wav"))
+            refined = client.refine("raw transcript text")
     """
-    
+
     def __init__(
         self,
-        socket_path: Path = DEFAULT_SOCKET_PATH,
-        timeout: float = 300.0,  # 5 minute timeout for long transcriptions
+        host: str = DEFAULT_DAEMON_HOST,
+        port: int = DEFAULT_DAEMON_PORT,
+        timeout: float = DEFAULT_TIMEOUT_S,
     ) -> None:
-        self.socket_path = socket_path
+        self.base_url = f"http://{host}:{port}"
         self.timeout = timeout
-    
-    async def _send_request(self, request_json: str) -> str:
-        """Send a request and receive response via Unix socket."""
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_unix_connection(str(self.socket_path)),
-            timeout=5.0,  # Connection timeout
-        )
-        
+
+    def ping(self) -> bool:
+        """Check if daemon is running and healthy.
+
+        Returns:
+            True if daemon is running and model is loaded
+        """
         try:
-            # Send request (newline-delimited)
-            writer.write((request_json + "\n").encode("utf-8"))
-            await writer.drain()
-            
-            # Read response
-            response_data = await asyncio.wait_for(
-                reader.readline(),
-                timeout=self.timeout,
+            response = requests.get(
+                f"{self.base_url}/health",
+                timeout=2.0,
             )
-            return response_data.decode("utf-8").strip()
-        finally:
-            writer.close()
-            await writer.wait_closed()
-    
-    def _run_async(self, coro: object) -> object:
-        """Run an async coroutine synchronously."""
-        return asyncio.run(coro)
-    
-    def is_connected(self) -> bool:
-        """Check if we can connect to the daemon."""
-        if not self.socket_path.exists():
+            if response.ok:
+                data = response.json()
+                return data.get("model_loaded", False)
             return False
+        except RequestException:
+            return False
+
+    def status(self) -> dict[str, Any]:
+        """Get detailed daemon status.
+
+        Returns:
+            Dict with status, model_name, uptime_seconds, requests_handled
+
+        Raises:
+            DaemonNotRunningError: If daemon is not running
+        """
         try:
-            status = self.status()
-            return status.running
-        except Exception:
-            return False
-    
-    def status(self) -> StatusResponse:
-        """Get daemon status."""
-        request = StatusRequest()
-        response_json = self._run_async(self._send_request(request.to_json()))
-        return StatusResponse.from_json(response_json)
-    
+            response = requests.get(
+                f"{self.base_url}/health",
+                timeout=2.0,
+            )
+            response.raise_for_status()
+            return response.json()
+        except ConnectionError as e:
+            raise DaemonNotRunningError("Cannot connect to daemon. Is it running?") from e
+        except RequestException as e:
+            raise DaemonError(f"Failed to get daemon status: {e}") from e
+
     def transcribe(
+        self,
+        audio_path: Path,
+        language: str = "en",
+    ) -> list[TranscriptSegment]:
+        """Transcribe audio file via daemon.
+
+        Args:
+            audio_path: Path to audio file
+            language: Language code for transcription
+
+        Returns:
+            List of TranscriptSegment objects
+
+        Raises:
+            FileNotFoundError: If audio file doesn't exist
+            DaemonNotRunningError: If daemon is not running
+            DaemonTimeoutError: If request times out
+            DaemonError: For other daemon errors
+        """
+        if not audio_path.exists():
+            raise FileNotFoundError(f"Audio file not found: {audio_path}")
+
+        try:
+            with open(audio_path, "rb") as f:
+                response = requests.post(
+                    f"{self.base_url}/transcribe",
+                    files={"audio": (audio_path.name, f, "audio/wav")},
+                    timeout=self.timeout,
+                )
+
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("success"):
+                raise DaemonError("Daemon returned success=false")
+
+            # Convert to TranscriptSegment objects
+            segments = []
+            for seg_data in data["segments"]:
+                segments.append(
+                    TranscriptSegment(
+                        start=seg_data["start"],
+                        end=seg_data["end"],
+                        raw_text=seg_data["text"],
+                        language=seg_data.get("language"),
+                    )
+                )
+
+            return segments
+
+        except Timeout as e:
+            raise DaemonTimeoutError(
+                f"Daemon request timed out after {self.timeout}s"
+            ) from e
+
+        except ConnectionError as e:
+            raise DaemonNotRunningError(
+                "Cannot connect to daemon. Is it running?"
+            ) from e
+
+        except RequestException as e:
+            raise DaemonError(f"Daemon request failed: {e}") from e
+
+    def refine(
+        self,
+        text: str,
+        instructions: str | None = None,
+    ) -> str:
+        """Refine text via daemon.
+
+        Args:
+            text: Raw transcript text to refine
+            instructions: Optional custom refinement instructions
+
+        Returns:
+            Refined text string
+
+        Raises:
+            DaemonNotRunningError: If daemon is not running
+            DaemonTimeoutError: If request times out
+            DaemonError: For other daemon errors
+        """
+        try:
+            response = requests.post(
+                f"{self.base_url}/refine",
+                json={"text": text, "instructions": instructions},
+                timeout=30.0,  # Refinement is typically faster
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("success"):
+                raise DaemonError("Daemon refinement failed")
+
+            return data["refined_text"]
+
+        except Timeout as e:
+            raise DaemonTimeoutError("Daemon refinement timed out") from e
+
+        except ConnectionError as e:
+            raise DaemonNotRunningError("Cannot connect to daemon") from e
+
+        except RequestException as e:
+            raise DaemonError(f"Daemon refinement failed: {e}") from e
+
+    def batch_transcribe(
         self,
         audio_paths: list[Path],
         language: str = "en",
-        max_new_tokens: int = 256,
-    ) -> list["TranscriptSegment"]:
-        """Transcribe audio files via the daemon.
-        
-        Returns list of TranscriptSegment objects.
-        Raises RuntimeError if transcription fails.
+    ) -> list[list[TranscriptSegment]]:
+        """Transcribe multiple files via daemon in batch.
+
+        Args:
+            audio_paths: List of paths to audio files
+            language: Language code for transcription
+
+        Returns:
+            List of segment lists, one per audio file
+
+        Raises:
+            FileNotFoundError: If any audio file doesn't exist
+            DaemonNotRunningError: If daemon is not running
+            DaemonTimeoutError: If request times out
+            DaemonError: For other daemon errors
         """
-        from vociferous.domain.model import TranscriptSegment
-        
-        request = TranscribeRequest(
-            audio_paths=[str(p) for p in audio_paths],
-            language=language,
-            max_new_tokens=max_new_tokens,
-        )
-        
-        response_json = self._run_async(self._send_request(request.to_json()))
-        response = TranscribeResponse.from_json(response_json)
-        
-        if not response.success:
-            raise RuntimeError(f"Daemon transcription failed: {response.error}")
-        
-        # Convert dicts back to TranscriptSegment objects
-        segments = []
-        for seg_dict in response.segments:
-            segments.append(TranscriptSegment(
-                id=seg_dict["id"],
-                start=seg_dict["start"],
-                end=seg_dict["end"],
-                raw_text=seg_dict["raw_text"],
-                refined_text=seg_dict.get("refined_text"),
-            ))
-        
-        return segments
-    
-    def shutdown(self) -> ShutdownResponse:
-        """Request daemon shutdown."""
-        request = ShutdownRequest()
-        response_json = self._run_async(self._send_request(request.to_json()))
-        return ShutdownResponse.from_json(response_json)
+        # Validate all paths exist
+        for p in audio_paths:
+            if not p.exists():
+                raise FileNotFoundError(f"Audio file not found: {p}")
+
+        try:
+            response = requests.post(
+                f"{self.base_url}/batch-transcribe",
+                json={
+                    "audio_paths": [str(p) for p in audio_paths],
+                    "language": language,
+                },
+                # Scale timeout with batch size
+                timeout=self.timeout * len(audio_paths),
+            )
+
+            response.raise_for_status()
+            data = response.json()
+
+            if not data.get("success"):
+                raise DaemonError("Daemon batch transcription failed")
+
+            # Convert results
+            all_segments: list[list[TranscriptSegment]] = []
+            for result in data["results"]:
+                segments = [
+                    TranscriptSegment(
+                        start=seg["start"],
+                        end=seg["end"],
+                        raw_text=seg["text"],
+                        language=seg.get("language"),
+                    )
+                    for seg in result["segments"]
+                ]
+                all_segments.append(segments)
+
+            return all_segments
+
+        except Timeout as e:
+            raise DaemonTimeoutError("Daemon batch transcription timed out") from e
+
+        except ConnectionError as e:
+            raise DaemonNotRunningError("Cannot connect to daemon") from e
+
+        except RequestException as e:
+            raise DaemonError(f"Daemon batch transcription failed: {e}") from e
+
+
+# ============================================================================
+# Convenience Functions for Workflow Integration
+# ============================================================================
 
 
 def transcribe_via_daemon(
+    audio_path: Path,
+    language: str = "en",
+) -> list[TranscriptSegment] | None:
+    """Try to transcribe via daemon, return None if unavailable.
+
+    This is a convenience function for workflow integration that
+    gracefully handles daemon unavailability.
+
+    Args:
+        audio_path: Path to audio file
+        language: Language code for transcription
+
+    Returns:
+        List of TranscriptSegment objects if successful, None if daemon unavailable
+    """
+    try:
+        client = DaemonClient()
+        return client.transcribe(audio_path, language)
+    except DaemonNotRunningError:
+        logger.debug("Daemon not running, will use direct engine")
+        return None
+    except DaemonError as e:
+        logger.warning(f"Daemon error: {e}, falling back to direct engine")
+        return None
+
+
+def refine_via_daemon(
+    text: str,
+    instructions: str | None = None,
+) -> str | None:
+    """Try to refine via daemon, return None if unavailable.
+
+    Args:
+        text: Raw transcript text to refine
+        instructions: Optional custom refinement instructions
+
+    Returns:
+        Refined text if successful, None if daemon unavailable
+    """
+    try:
+        client = DaemonClient()
+        return client.refine(text, instructions)
+    except DaemonNotRunningError:
+        logger.debug("Daemon not running, will use direct engine")
+        return None
+    except DaemonError as e:
+        logger.warning(f"Daemon refinement error: {e}, falling back")
+        return None
+
+
+def batch_transcribe_via_daemon(
     audio_paths: list[Path],
     language: str = "en",
-    max_new_tokens: int = 256,
-    socket_path: Path = DEFAULT_SOCKET_PATH,
-) -> list["TranscriptSegment"] | None:
-    """Convenience function to transcribe via daemon if available.
-    
-    Returns None if daemon is not running (caller should fallback to direct).
+) -> list[list[TranscriptSegment]] | None:
+    """Try batch transcription via daemon, return None if unavailable.
+
+    Args:
+        audio_paths: List of paths to audio files
+        language: Language code for transcription
+
+    Returns:
+        List of segment lists if successful, None if daemon unavailable
     """
-    if not is_daemon_running(socket_path=socket_path):
-        return None
-    
     try:
-        client = DaemonClient(socket_path=socket_path)
-        return client.transcribe(
-            audio_paths=audio_paths,
-            language=language,
-            max_new_tokens=max_new_tokens,
-        )
-    except Exception:
+        client = DaemonClient()
+        return client.batch_transcribe(audio_paths, language)
+    except DaemonNotRunningError:
+        logger.debug("Daemon not running, will use direct engine")
+        return None
+    except DaemonError as e:
+        logger.warning(f"Daemon batch error: {e}, falling back")
         return None

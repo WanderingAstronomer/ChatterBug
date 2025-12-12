@@ -52,7 +52,7 @@ class EngineWorker:
     """In-process engine worker that keeps a single engine instance warm.
     
     Supports lazy loading and daemon integration - the local engine is only
-    loaded if the daemon is not running.
+    loaded if the daemon is not running or use_daemon is False.
     """
 
     def __init__(
@@ -60,7 +60,7 @@ class EngineWorker:
         profile: EngineProfile,
         *,
         engine: TranscriptionEngine | None = None,
-        use_daemon: bool = True,
+        use_daemon: bool = False,
     ) -> None:
         self.profile = profile
         self._provided_engine = engine
@@ -89,6 +89,9 @@ class EngineWorker:
         try:
             from vociferous.server import is_daemon_running
             self._daemon_available = is_daemon_running()
+            if self._daemon_available:
+                import logging
+                logging.getLogger(__name__).info("Daemon detected, will use for transcription")
         except ImportError:
             self._daemon_available = False
         
@@ -122,9 +125,32 @@ class EngineWorker:
         return tuple(self._warnings)
 
     def transcribe(self, audio_path: Path) -> list[TranscriptSegment]:
+        """Transcribe a single audio file."""
+        # Try daemon first if enabled
+        if self._check_daemon():
+            try:
+                from vociferous.server import transcribe_via_daemon
+                segments = transcribe_via_daemon(audio_path, self.profile.options.language)
+                if segments is not None:
+                    self._used_daemon = True
+                    return segments
+            except Exception:
+                pass  # Fallback to local engine
+        
         return self._ensure_engine().transcribe_file(Path(audio_path), self.profile.options)
 
     def refine_text(self, text: str, instructions: str | None = None) -> str:
+        """Refine transcript text."""
+        # Try daemon first if enabled
+        if self._check_daemon():
+            try:
+                from vociferous.server import refine_via_daemon
+                refined = refine_via_daemon(text, instructions)
+                if refined is not None:
+                    return refined
+            except Exception:
+                pass  # Fallback to local engine
+        
         engine = self._ensure_engine()
         if hasattr(engine, "refine_text"):
             return engine.refine_text(text, instructions)  # type: ignore[attr-defined]
@@ -158,17 +184,14 @@ class EngineWorker:
         # Try daemon first for fastest inference (model already in GPU memory)
         if self._check_daemon():
             try:
-                from vociferous.server import transcribe_via_daemon
-                daemon_segments = transcribe_via_daemon(
+                from vociferous.server import batch_transcribe_via_daemon
+                daemon_segments = batch_transcribe_via_daemon(
                     [Path(p) for p in audio_paths],
                     language=self.profile.options.language,
                 )
                 if daemon_segments is not None:
-                    self._used_daemon = True  # Mark that daemon was used
-                    # Daemon returns flat list, need to group by audio file
-                    # For now, return all segments as a single group since daemon 
-                    # already handles batching internally
-                    return [daemon_segments]
+                    self._used_daemon = True
+                    return daemon_segments
             except Exception:
                 pass  # Daemon failed, fallback to local engine
         
@@ -198,6 +221,7 @@ def transcribe_file_workflow(
     intermediate_dir: Path | None = None,
     condensed_path: Path | None = None,
     engine_worker: EngineWorker | None = None,
+    use_daemon: bool = False,
 ) -> TranscriptionResult:
     """Canonical decode → VAD → condense → transcribe workflow.
 
@@ -205,6 +229,19 @@ def transcribe_file_workflow(
     preprocessing happens in the audio module, and a single engine instance
     is reused via EngineWorker to keep the seam ready for out-of-process
     workers later.
+    
+    Args:
+        source: Audio source to transcribe
+        engine_profile: Engine configuration profile
+        segmentation_profile: VAD and chunking settings
+        refine: Whether to refine the transcript
+        refine_instructions: Custom refinement instructions
+        keep_intermediates: Keep intermediate files
+        artifact_config: Artifact handling configuration
+        intermediate_dir: Directory for intermediate files
+        condensed_path: Pre-condensed audio path (skip VAD)
+        engine_worker: Pre-configured engine worker
+        use_daemon: Use warm model daemon if available
     """
     artifact_cfg = artifact_config or ArtifactConfig()
     # CLI override wins; otherwise follow config cleanup flag
@@ -219,7 +256,7 @@ def transcribe_file_workflow(
 
     cleanup_paths: list[Path] = []
     had_error = False
-    worker = engine_worker or EngineWorker(engine_profile)
+    worker = engine_worker or EngineWorker(engine_profile, use_daemon=use_daemon)
     warnings: list[str] = list(worker.warnings)
     try:
         target_audio = source.resolve_to_path(work_dir)
@@ -326,6 +363,7 @@ def transcribe_workflow(
     refine: bool = False,
     refine_instructions: str | None = None,
     engine=None,
+    use_daemon: bool = False,
 ) -> TranscriptionResult:
     """Backward-compatible wrapper around the canonical workflow.
 
@@ -337,7 +375,7 @@ def transcribe_workflow(
     segmentation_profile = SegmentationProfile()
     source: Source = FileSource(audio_path)
 
-    worker = EngineWorker(engine_profile, engine=engine) if engine is not None else None
+    worker = EngineWorker(engine_profile, engine=engine, use_daemon=use_daemon) if engine is not None else None
 
     return transcribe_file_workflow(
         source,
@@ -350,5 +388,6 @@ def transcribe_workflow(
         intermediate_dir=intermediate_dir,
         condensed_path=condensed_path,
         engine_worker=worker,
+        use_daemon=use_daemon,
     )
                 

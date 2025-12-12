@@ -1,8 +1,8 @@
 # Vociferous: Executive Architecture Philosophy & Design Principles
 
 **Date:** December 2025
-**Version:** 2.2
-**Status:** Core Architecture Complete (v0.3.4 Alpha)
+**Version:** 2.3
+**Status:** Core Architecture Complete (v0.5.0 Alpha)
 
 > **Note:** The authoritative specification is [Redesign.md](Redesign.md).
 > If this document and the Redesign Document disagree, the Redesign Document wins.
@@ -19,6 +19,7 @@
 | **config** | ✅ Implemented | Config loading and management working |
 | **domain** | ✅ Implemented | Core types, models, exceptions defined |
 | **sources** | ✅ Implemented | File sources and microphone capture working |
+| **server** | ✅ Implemented | FastAPI daemon for warm model inference (v0.5.0) |
 | **gui** | ✅ Implemented | KivyMD GUI functional |
 
 **Legend:** ✅ Implemented · 🚧 In Progress · ❌ Not Started · 🔄 Needs Refactor
@@ -1382,6 +1383,94 @@ vociferous condense audio.wav  # Where are timestamps?
 ```
 
 **Why:** Makes data flow visible and debuggable.
+
+---
+
+## Daemon Architecture (v0.5.0)
+
+### **Warm Model Service**
+
+The daemon provides a persistent inference service to eliminate model loading overhead (~40-50 seconds per invocation).
+
+**Architecture:**
+
+```mermaid
+graph TD
+    CLI["vociferous transcribe<br/>CLI Command"]
+    DAEMON["FastAPI Server<br/>Port 8765"]
+    MODEL["Canary-Qwen Model<br/>Loaded in VRAM"]
+    FALLBACK["Direct Inference<br/>Cold Start"]
+
+    CLI -->|"use_daemon=True"| DAEMON
+    CLI -->|"fallback"| FALLBACK
+    DAEMON -->|"warm inference"| MODEL
+
+    style DAEMON fill:#a8d5ff
+    style MODEL fill:#d5ffd5
+    style FALLBACK fill:#fff3a8
+```
+
+### **Design Principles**
+
+| Principle | Implementation |
+|-----------|----------------|
+| **Optional Enhancement** | Daemon is opt-in; system works without it |
+| **Graceful Fallback** | Client returns None on failure; caller falls back to cold start |
+| **Localhost Only** | Server binds to 127.0.0.1 (no network exposure) |
+| **Standard HTTP** | Uses FastAPI + uvicorn (no custom protocols) |
+| **File-Based** | Transcription uses temp file uploads (no streaming) |
+
+### **Server Module Structure**
+
+```
+vociferous/server/
+├── __init__.py       # Public API exports
+├── api.py            # FastAPI application and endpoints
+└── client.py         # HTTP client for daemon communication
+```
+
+### **API Endpoints**
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/health` | GET | Status, uptime, model state |
+| `/transcribe` | POST | Single file transcription (multipart upload) |
+| `/refine` | POST | Text refinement (JSON body) |
+| `/batch-transcribe` | POST | Multiple files (JSON paths array) |
+
+### **CLI Integration**
+
+```bash
+# Daemon lifecycle
+vociferous daemon start      # Start server (background)
+vociferous daemon stop       # Stop server
+vociferous daemon status     # Check status
+vociferous daemon logs       # View logs
+
+# Automatic daemon usage
+vociferous transcribe --use-daemon audio.mp3
+```
+
+### **Workflow Integration**
+
+The `EngineWorker` class accepts `use_daemon=True` to transparently use the daemon:
+
+```python
+from vociferous.app.workflow import transcribe_file_workflow
+
+# Tries daemon first, falls back to cold start
+segments = transcribe_file_workflow(
+    audio_path=Path("audio.mp3"),
+    use_daemon=True
+)
+```
+
+**Performance Impact:**
+
+| Mode | First File | Subsequent Files |
+|------|------------|------------------|
+| Cold Start | ~50s | ~50s each |
+| Warm Daemon | ~50s (startup) | ~2-5s each |
 
 ---
 

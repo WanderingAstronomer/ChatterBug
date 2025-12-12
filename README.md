@@ -59,6 +59,40 @@ Each stage is batch processing - complete file in, complete file out.
 - Disfluency cleaning is on by default for Whisper; toggle with `--no-clean-disfluencies`.
 - Default device is `cuda` for Canary-Qwen, `auto` for Whisper Turbo.
 
+## Performance: Warm Model Daemon
+
+For best performance when transcribing multiple files, start the warm model daemon:
+
+```bash
+# Start daemon (loads model into GPU memory)
+vociferous daemon start
+
+# Now transcriptions are instant (~2-5s instead of ~29s)
+vociferous transcribe audio1.wav --use-daemon
+vociferous transcribe audio2.wav --use-daemon
+
+# Stop daemon when done
+vociferous daemon stop
+```
+
+**Performance comparison:**
+
+| Method | First File | Subsequent Files |
+|--------|-----------|------------------|
+| Direct (cold start) | ~29s | ~29s each |
+| Daemon (warm model) | ~29s | **~2-5s each** |
+
+The daemon is **automatically used** when the GUI is running.
+
+**Commands:**
+- `vociferous daemon start` - Start daemon (model loads in ~16s)
+- `vociferous daemon stop` - Stop daemon
+- `vociferous daemon status` - Check if running
+- `vociferous daemon logs` - View daemon logs
+- `vociferous daemon restart` - Restart daemon
+
+See [Daemon Documentation](docs/daemon.md) for details.
+
 ## Configuration
 - Config file: `~/.config/vociferous/config.toml` (created on first run). CLI flags override config values.
 - Key fields: `engine` (default `canary_qwen`), `model_name` (default `nvidia/canary-qwen-2.5b`), `model_cache_dir`, `device`, `compute_type`, `params`.
