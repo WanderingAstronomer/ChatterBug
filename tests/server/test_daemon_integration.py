@@ -14,12 +14,21 @@ Skip with: pytest tests/server/ -v -m "not slow"
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import time
 from pathlib import Path
 
 import pytest
+
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.skipif(
+        os.getenv("VOCIFEROUS_RUN_DAEMON_TESTS") != "1",
+        reason="Set VOCIFEROUS_RUN_DAEMON_TESTS=1 to run real daemon lifecycle tests",
+    ),
+]
 
 # Test audio file
 SAMPLE_AUDIO = Path(__file__).parent.parent / "audio" / "sample_audio" / "ASR_Test.wav"

@@ -121,18 +121,19 @@ class FfmpegDecoder:
         import shutil
         import subprocess
 
-        # Check if it's already a full path
+        # Determine executable path with proper type handling
+        executable: str | None = None
         if os.path.isfile(self.ffmpeg_path) and os.access(self.ffmpeg_path, os.X_OK):
-            path = self.ffmpeg_path
+            executable = self.ffmpeg_path
         else:
-            path = shutil.which(self.ffmpeg_path)
-        
-        if path is None:
+            executable = shutil.which(self.ffmpeg_path)
+
+        if executable is None:
             return False
 
         try:
             proc = subprocess.run(
-                [path, "-version"],
+                [executable, "-version"],
                 capture_output=True,
                 check=False,
             )

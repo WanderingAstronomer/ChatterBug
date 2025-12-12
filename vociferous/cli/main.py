@@ -292,7 +292,6 @@ def transcribe(
     engine: Annotated[
         EngineKind,
         typer.Option(
-            "canary_qwen",
             "--engine",
             "-e",
             rich_help_panel="Core Options",
@@ -305,7 +304,6 @@ def transcribe(
     language: Annotated[
         str,
         typer.Option(
-            "en",
             "--language",
             "-l",
             rich_help_panel="Core Options",
@@ -315,7 +313,6 @@ def transcribe(
     output: Annotated[
         Path | None,
         typer.Option(
-            None,
             "--output",
             "-o",
             metavar="PATH",
@@ -326,7 +323,6 @@ def transcribe(
     keep_intermediates: Annotated[
         bool | None,
         typer.Option(
-            None,
             "--keep-intermediates/--no-keep-intermediates",
             help="Keep decoded/vad/condensed files (default follows config).",
             rich_help_panel="Core Options",
@@ -336,7 +332,6 @@ def transcribe(
     refine: Annotated[
         bool | None,
         typer.Option(
-            None,
             "--refine/--no-refine",
             help="Enable or disable second-pass refinement when the engine supports it.",
             show_default=False,
@@ -346,7 +341,6 @@ def transcribe(
     refine_instructions: Annotated[
         str | None,
         typer.Option(
-            None,
             "--refine-instructions",
             help="Custom refinement instructions (engines that support dual-pass).",
             show_default=False,

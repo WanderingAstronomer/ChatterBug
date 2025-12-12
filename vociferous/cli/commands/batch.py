@@ -36,7 +36,6 @@ def register_batch(app: typer.Typer) -> None:
         output_dir: Annotated[
             Path | None,
             typer.Option(
-                None,
                 "--output-dir",
                 "-o",
                 help="Output directory for transcripts (default: ./transcripts)",
@@ -45,7 +44,6 @@ def register_batch(app: typer.Typer) -> None:
         combined: Annotated[
             bool,
             typer.Option(
-                False,
                 "--combined",
                 "-c",
                 help="Generate a combined transcript from all files",
@@ -54,7 +52,6 @@ def register_batch(app: typer.Typer) -> None:
         continue_on_error: Annotated[
             bool,
             typer.Option(
-                True,
                 "--continue-on-error/--stop-on-error",
                 help="Continue processing if a file fails",
             ),
@@ -62,7 +59,6 @@ def register_batch(app: typer.Typer) -> None:
         daemon: Annotated[
             str,
             typer.Option(
-                "always",
                 "--daemon",
                 "-d",
                 help="Daemon mode: 'always' (start if needed), 'auto' (use if running), 'never'",
@@ -71,7 +67,6 @@ def register_batch(app: typer.Typer) -> None:
         parallel: Annotated[
             int,
             typer.Option(
-                1,
                 "--parallel",
                 "-j",
                 help="Number of parallel transcriptions (use with daemon)",
@@ -80,7 +75,6 @@ def register_batch(app: typer.Typer) -> None:
         preprocess: Annotated[
             str,
             typer.Option(
-                "none",
                 "--preprocess",
                 "-p",
                 help="Preprocessing preset: none, basic, clean, phone, podcast",
@@ -89,7 +83,6 @@ def register_batch(app: typer.Typer) -> None:
         refine: Annotated[
             bool,
             typer.Option(
-                True,
                 "--refine/--no-refine",
                 help="Apply transcript refinement",
             ),
@@ -97,7 +90,6 @@ def register_batch(app: typer.Typer) -> None:
         verbose: Annotated[
             bool,
             typer.Option(
-                True,
                 "--verbose/--quiet",
                 help="Show progress output",
             ),

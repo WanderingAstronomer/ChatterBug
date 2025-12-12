@@ -263,11 +263,11 @@ class BatchTranscriptionRunner:
         start_time = time.time()
 
         try:
-            from vociferous.config import get_segmentation_profile, load_config
+            from vociferous.config import get_engine_profile, get_segmentation_profile, load_config
 
             # Load default profiles if not provided
             config = load_config()
-            engine_profile = self.engine_profile or config.get_engine_profile()
+            engine_profile = self.engine_profile or get_engine_profile(config)
             seg_profile = self.segmentation_profile or get_segmentation_profile(config)
 
             # Transcribe
@@ -333,7 +333,10 @@ def generate_combined_transcript(
             if include_filenames:
                 f.write(f"# {result.source_file.name}\n\n")
 
-            f.write(result.transcript_text.strip())
+            # transcript_text is guaranteed non-None by the filter above
+            text = result.transcript_text
+            if text:
+                f.write(text.strip())
 
             if i < len(successful) - 1:
                 f.write(separator)

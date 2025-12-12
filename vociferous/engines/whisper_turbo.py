@@ -8,11 +8,8 @@ Supports Whisper Turbo, V3, and Large models.
 from __future__ import annotations
 
 import logging
-import wave
 from pathlib import Path
 from typing import Any
-
-import numpy as np
 
 from vociferous.domain.exceptions import DependencyError
 from vociferous.domain.model import (
@@ -28,27 +25,15 @@ from vociferous.engines.model_registry import normalize_model_name
 
 logger = logging.getLogger(__name__)
 
-PCM16_SCALE = 32768.0
-
-
-def load_audio_file(audio_path: Path) -> np.ndarray:
-    """Load 16kHz mono PCM WAV file as normalized float32 numpy array."""
-    with wave.open(str(audio_path), "rb") as wf:
-        if wf.getnchannels() != 1:
-            raise ValueError(f"Expected mono audio, got {wf.getnchannels()} channels")
-        if wf.getsampwidth() != 2:
-            raise ValueError(f"Expected 16-bit audio, got {wf.getsampwidth() * 8}-bit")
-        if wf.getframerate() != 16000:
-            raise ValueError(f"Expected 16kHz audio, got {wf.getframerate()}Hz")
-        frames = wf.readframes(wf.getnframes())
-    return np.frombuffer(frames, dtype=np.int16).astype(np.float32) / PCM16_SCALE
-
 
 class WhisperTurboEngine(TranscriptionEngine):
     """Official OpenAI Whisper engine for CPU/GPU batch transcription.
     
     Uses the official openai-whisper package. Supports Turbo, V3, and Large models.
     Does NOT use faster-whisper or CTranslate2.
+    
+    Note: Whisper is ASR-only and does not support text refinement.
+    For refinement, use Canary-Qwen engine instead.
     """
 
     def __init__(self, config: EngineConfig) -> None:
@@ -74,30 +59,60 @@ class WhisperTurboEngine(TranscriptionEngine):
             precision=self.precision,
         )
 
-    def transcribe_file(self, audio_path: Path, options: TranscriptionOptions | None = None) -> list[TranscriptSegment]:
-        """Transcribe entire audio file in batch using official Whisper."""
+    def transcribe_file(
+        self,
+        audio_path: Path,
+        options: TranscriptionOptions | None = None,
+    ) -> list[TranscriptSegment]:
+        """Transcribe entire audio file in batch using official Whisper.
+        
+        Args:
+            audio_path: Path to preprocessed audio file (16kHz mono WAV recommended)
+            options: Transcription options (language, etc.)
+            
+        Returns:
+            List of TranscriptSegment with raw_text populated
+            
+        Raises:
+            DependencyError: If Whisper model is not loaded
+        """
         if self._model is None:
-            raise DependencyError("Whisper model not loaded")
+            raise DependencyError(
+                "Whisper model not loaded",
+                suggestions=["Install openai-whisper: pip install openai-whisper"],
+            )
         
         resolved_options = options or TranscriptionOptions()
         
-        # Official Whisper transcribe() accepts file path directly
-        # It handles audio loading internally
-        result = self._model.transcribe(
-            str(audio_path),
-            language=resolved_options.language if resolved_options.language != "auto" else None,
-            fp16=(self.device == "cuda" and self.precision in ("float16", "fp16")),
-        )
+        # Use inference mode for faster inference if torch is available
+        try:
+            import torch
+            inference_context = torch.inference_mode()
+        except ImportError:
+            from contextlib import nullcontext
+            inference_context = nullcontext()
+        
+        with inference_context:
+            # Official Whisper transcribe() accepts file path directly
+            result = self._model.transcribe(
+                str(audio_path),
+                language=resolved_options.language if resolved_options.language != "auto" else None,
+                fp16=(self.device == "cuda" and self.precision in ("float16", "fp16")),
+            )
         
         # Convert to domain segments
         result_segments: list[TranscriptSegment] = []
         for idx, seg in enumerate(result.get("segments", [])):
+            text = seg.get("text", "").strip()
+            if not text:
+                continue  # Skip empty segments
             result_segments.append(
                 TranscriptSegment(
                     id=f"segment-{idx}",
-                    start=seg["start"],
-                    end=seg["end"],
-                    raw_text=seg["text"].strip(),
+                    start=float(seg["start"]),
+                    end=float(seg["end"]),
+                    raw_text=text,
+                    language=resolved_options.language if resolved_options.language != "auto" else None,
                 )
             )
         
@@ -112,14 +127,25 @@ class WhisperTurboEngine(TranscriptionEngine):
             import whisper
         except ImportError as exc:
             raise DependencyError(
-                "openai-whisper required; install with: pip install openai-whisper"
+                "openai-whisper package required",
+                suggestions=[
+                    "Install with: pip install openai-whisper",
+                    "Or: pip install -e .[whisper]",
+                ],
             ) from exc
         
-        logger.info(f"Loading Whisper model: {self.model_name} (device={self.device})")
+        logger.info(
+            "Loading Whisper model: %s (device=%s, precision=%s)",
+            self.model_name,
+            self.device,
+            self.precision,
+        )
         
-        # Official Whisper uses model size names: "turbo", "large-v3", "large", "medium", "small", "base", "tiny"
+        # Official Whisper uses model size names
         self._model = whisper.load_model(
             self.model_name,
             device=self.device,
             download_root=str(self.cache_dir),
         )
+        
+        logger.info("Whisper model loaded successfully")

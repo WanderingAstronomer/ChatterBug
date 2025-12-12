@@ -34,7 +34,6 @@ def register_bench(app: typer.Typer) -> None:
         engine_profile: Annotated[
             str,
             typer.Option(
-                "canary_qwen_fp16",
                 "--engine-profile",
                 help="Engine profile name from config",
             ),
@@ -42,7 +41,6 @@ def register_bench(app: typer.Typer) -> None:
         segmentation_profile: Annotated[
             str,
             typer.Option(
-                "default",
                 "--segmentation-profile",
                 help="Segmentation profile name from config",
             ),
@@ -50,7 +48,6 @@ def register_bench(app: typer.Typer) -> None:
         pattern: Annotated[
             str,
             typer.Option(
-                "*.wav",
                 "--pattern",
                 help="File pattern to match (e.g., '*.wav', '*.mp3', '*')",
             ),
@@ -58,7 +55,6 @@ def register_bench(app: typer.Typer) -> None:
         refine: Annotated[
             bool,
             typer.Option(
-                False,
                 "--refine",
                 help="Enable refinement pass (increases processing time)",
             ),
@@ -66,7 +62,6 @@ def register_bench(app: typer.Typer) -> None:
         reference_dir: Annotated[
             Path | None,
             typer.Option(
-                None,
                 "--reference-dir",
                 help="Directory with reference transcripts for WER calculation (not yet implemented)",
             ),

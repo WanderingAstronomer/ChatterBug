@@ -18,6 +18,7 @@ from vociferous.config.schema import ArtifactConfig
 from vociferous.domain.model import (
     EngineConfig,
     EngineKind,
+    EngineMetadata,
     EngineProfile,
     SegmentationProfile,
     TranscriptionEngine,
@@ -139,15 +140,14 @@ class EngineWorker:
         return self._engine
 
     @property
-    def metadata(self):
+    def metadata(self) -> EngineMetadata:
         """Get engine metadata.
-        
+
         If daemon was used, returns metadata based on profile config.
         Otherwise, loads the engine and gets its metadata.
         """
         if self._used_daemon:
             # Return metadata based on what we know from config
-            from vociferous.domain.model import EngineMetadata
             return EngineMetadata(
                 model_name=self.profile.config.model_name or "nvidia/canary-qwen-2.5b",
                 device="daemon",
@@ -182,13 +182,14 @@ class EngineWorker:
                 from vociferous.server import refine_via_daemon
                 refined = refine_via_daemon(text, instructions)
                 if refined is not None:
-                    return refined
+                    return str(refined)
             except Exception:
                 pass  # Fallback to local engine
-        
+
         engine = self._ensure_engine()
         if hasattr(engine, "refine_text"):
-            return engine.refine_text(text, instructions)  # type: ignore[attr-defined]
+            result: str = engine.refine_text(text, instructions)
+            return result
         return text
 
     def refine_segments(
@@ -200,19 +201,20 @@ class EngineWorker:
         """Refine segments via engine if it supports segment refinement."""
         engine = self._ensure_engine()
         if hasattr(engine, "refine_segments"):
-            return engine.refine_segments(segments, mode, instructions)  # type: ignore[attr-defined]
-        
+            result: list[TranscriptSegment] = engine.refine_segments(segments, mode, instructions)
+            return result
+
         # Fallback: use text-based refinement and assign to all segments
         combined_text = " ".join(seg.raw_text.strip() for seg in segments if seg.raw_text.strip())
         if not combined_text or not hasattr(engine, "refine_text"):
             return segments
-        
+
         refined_text = self.refine_text(combined_text, instructions)
         return [replace(seg, refined_text=refined_text) for seg in segments]
 
     def transcribe_batch(self, audio_paths: list[Path]) -> list[list[TranscriptSegment]]:
         """Transcribe multiple audio files in a single batched call if supported.
-        
+
         Falls back to sequential transcription if the engine doesn't support batching.
         Automatically uses the daemon server if it's running for faster inference.
         """
@@ -226,17 +228,19 @@ class EngineWorker:
                 )
                 if daemon_segments is not None:
                     self._used_daemon = True
-                    return daemon_segments
+                    result: list[list[TranscriptSegment]] = daemon_segments
+                    return result
             except Exception:
                 pass  # Daemon failed, fallback to local engine
-        
+
         # Fallback to local engine
         engine = self._ensure_engine()
         if hasattr(engine, "transcribe_files_batch"):
-            return engine.transcribe_files_batch(  # type: ignore[attr-defined]
-                [Path(p) for p in audio_paths], 
+            batch_result: list[list[TranscriptSegment]] = engine.transcribe_files_batch(
+                [Path(p) for p in audio_paths],
                 self.profile.options
             )
+            return batch_result
         # Fallback: sequential transcription
         return [self.transcribe(path) for path in audio_paths]
 
@@ -447,7 +451,7 @@ def transcribe_workflow(
     condensed_path: Path | None = None,
     refine: bool = False,
     refine_instructions: str | None = None,
-    engine=None,
+    engine: TranscriptionEngine | None = None,
     use_daemon: bool = False,
 ) -> TranscriptionResult:
     """Backward-compatible wrapper around the canonical workflow.

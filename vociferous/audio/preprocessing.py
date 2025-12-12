@@ -34,7 +34,7 @@ import shutil
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from vociferous.domain.exceptions import AudioProcessingError, DependencyError
 
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 
 # Available presets with their configurations
-PRESETS: dict[str, dict] = {
+PRESETS: dict[str, dict[str, Any]] = {
     "none": {},
     "basic": {"normalize": True},
     "clean": {"denoise": True, "normalize": True},

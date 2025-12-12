@@ -7,10 +7,19 @@ Tests will be skipped if GPU memory is insufficient.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.skipif(
+        os.getenv("VOCIFEROUS_RUN_CANARY_TESTS") != "1",
+        reason="Set VOCIFEROUS_RUN_CANARY_TESTS=1 to run real Canary-Qwen GPU tests",
+    ),
+]
 
 torch = pytest.importorskip("torch", reason="Canary tests require PyTorch")
 pytest.importorskip(

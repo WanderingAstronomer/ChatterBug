@@ -43,10 +43,14 @@
 
 - **Canary-Qwen 2.5B is now the default production engine** with full dual-pass (ASR + refinement) working.
 - **Critical VRAM fix implemented:** Explicit dtype handling prevents PyTorch's float32 auto-loading memory leak (20GB → 5GB).
-- Shared `audio_loader` utility eliminates duplicate WAV-to-numpy logic and PCM scaling constants.
 - Whisper Turbo remains available as a fallback engine for compatibility.
 - Mock mode removed from Canary engine - real model only (no `use_mock` parameter).
 - Cache manager validates inputs and minimum model size; hardware detection logs CUDA initialization failures.
+- **Hardware detection hardened (v0.7.2):** Validates CUDA device properties before returning "cuda" to catch driver issues early.
+- **Model registry simplified:** Removed redundant validation functions; cleaner error messages with available model lists.
+- **Dead code removal:** Unused `_resolve_dtype` in Canary engine, unused `load_audio_file` in Whisper engine removed.
+- **Inference optimization:** Both engines now use `torch.inference_mode()` context for faster inference.
+- **Token calculation improved:** Refinement token limits now based on character-to-token ratio (4 chars/token) with 50% expansion headroom.
 
 ### Refinement Module Updates
 
@@ -344,6 +348,22 @@ def test_canary_asr_mode():
 
 - **Tests prove real behavior, not mocked behavior**
 
+### **App-Level Orchestration Tests**
+
+App-level tests (e.g., `tests/app/test_batch.py`) may use `monkeypatch` or lightweight stubs when:
+- Full workflow requires loading heavy ML models (Canary-Qwen, Whisper)
+- Real-file tests would take minutes per test
+- The test is verifying orchestration logic, not component behavior
+
+**Acceptable in app tests:**
+- `monkeypatch.setattr()` for workflow functions
+- Stub classes that return fixed values
+- Testing configuration and routing logic
+
+**Still required:**
+- Dataclass and utility function tests use direct instantiation (no mocks)
+- Type annotations on all test methods
+- Clear documentation of why mocking is necessary
 
 ---
 

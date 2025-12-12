@@ -22,7 +22,6 @@ def register_refine(app: typer.Typer) -> None:
         output: Annotated[
             Path | None,
             typer.Option(
-                None,
                 "--output",
                 "-o",
                 metavar="PATH",
@@ -32,7 +31,6 @@ def register_refine(app: typer.Typer) -> None:
         mode: Annotated[
             str | None,
             typer.Option(
-                None,
                 "--mode",
                 help="Refinement mode: grammar_only (default), summary, bullet_points",
                 show_default=False,
@@ -41,7 +39,6 @@ def register_refine(app: typer.Typer) -> None:
         instructions: Annotated[
             str | None,
             typer.Option(
-                None,
                 "--instructions",
                 "-i",
                 help="Custom refinement instructions (overrides mode)",
@@ -51,7 +48,6 @@ def register_refine(app: typer.Typer) -> None:
         model: Annotated[
             str | None,
             typer.Option(
-                None,
                 "--model",
                 "-m",
                 help="Refiner model (defaults to config refinement_model)",

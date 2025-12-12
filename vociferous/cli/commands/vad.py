@@ -19,7 +19,6 @@ def register_vad(app: typer.Typer) -> None:
         output: Annotated[
             Path | None,
             typer.Option(
-                None,
                 "--output",
                 "-o",
                 metavar="PATH",

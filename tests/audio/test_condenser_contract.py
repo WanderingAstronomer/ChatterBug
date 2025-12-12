@@ -9,13 +9,17 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        shutil.which("ffmpeg") is None,
+        reason="ffmpeg is required for condenser contract tests",
+    ),
+]
+
 SAMPLES_DIR = Path(__file__).resolve().parent / "sample_audio"
 SHORT_FLAC = SAMPLES_DIR / "ASR_Test.flac"
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
-
-pytestmark = pytest.mark.skipif(
-    shutil.which("ffmpeg") is None, reason="ffmpeg is required for condenser contract tests"
-)
 
 if not SHORT_FLAC.exists():
     pytest.skip("Sample audio fixture missing", allow_module_level=True)

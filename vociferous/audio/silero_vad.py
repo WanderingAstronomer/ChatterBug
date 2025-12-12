@@ -199,6 +199,7 @@ class SileroVAD:
         
         try:
             with open(cache_path) as f:
-                return json.load(f)
+                data: list[dict[str, float]] = json.load(f)
+                return data
         except (OSError, json.JSONDecodeError):
             return None

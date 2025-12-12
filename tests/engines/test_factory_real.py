@@ -6,6 +6,7 @@ Validates engine resolution, model validation, and error handling.
 
 from __future__ import annotations
 
+import importlib.util
 import tempfile
 
 import pytest
@@ -13,15 +14,15 @@ import pytest
 from vociferous.domain.exceptions import ConfigurationError
 from vociferous.domain.model import EngineConfig
 from vociferous.engines.factory import build_engine
-from vociferous.engines.model_registry import (
-    DEFAULT_CANARY_MODEL,
-    DEFAULT_WHISPER_MODEL,
-)
+from vociferous.engines.model_registry import DEFAULT_CANARY_MODEL, DEFAULT_WHISPER_MODEL
+
+HAS_WHISPER = importlib.util.find_spec("whisper") is not None
 
 
 class TestEngineFactory:
     """Engine factory with real initialization logic."""
 
+    @pytest.mark.skipif(not HAS_WHISPER, reason="whisper not installed")
     def test_build_whisper_engine_cpu(self) -> None:
         """Building Whisper engine on CPU succeeds."""
         config = EngineConfig(
@@ -33,6 +34,7 @@ class TestEngineFactory:
         assert engine is not None
         assert hasattr(engine, "transcribe_file")
 
+    @pytest.mark.skipif(not HAS_WHISPER, reason="whisper not installed")
     def test_build_whisper_engine_with_custom_model(self) -> None:
         """Whisper engine accepts model aliases."""
         config = EngineConfig(
@@ -43,6 +45,7 @@ class TestEngineFactory:
         engine = build_engine("whisper_turbo", config)
         assert engine is not None
 
+    @pytest.mark.skipif(not HAS_WHISPER, reason="whisper not installed")
     def test_build_engine_with_invalid_whisper_model_raises_error(self) -> None:
         """Invalid model for Whisper raises ValueError."""
         config = EngineConfig(
@@ -85,6 +88,7 @@ class TestEngineFactory:
             # Expected if CUDA not available or NeMo not installed
             assert "CUDA" in str(e) or "GPU" in str(e) or "NeMo" in str(e)
 
+    @pytest.mark.skipif(not HAS_WHISPER, reason="whisper not installed")
     def test_build_whisper_engine_auto_device(self) -> None:
         """Whisper with auto device detection works."""
         config = EngineConfig(
@@ -101,6 +105,7 @@ class TestEngineFactory:
         with pytest.raises(ValueError, match="Unknown engine kind"):
             build_engine("unknown_engine", config)
 
+    @pytest.mark.skipif(not HAS_WHISPER, reason="whisper not installed")
     def test_build_engine_with_cache_dir(self) -> None:
         """Engine accepts custom model cache directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -112,5 +117,3 @@ class TestEngineFactory:
             )
             engine = build_engine("whisper_turbo", config)
             assert engine is not None
-
-

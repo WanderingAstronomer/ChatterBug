@@ -29,7 +29,6 @@ def register_condense(app: typer.Typer) -> None:
         output: Annotated[
             Path | None,
             typer.Option(
-                None,
                 "--output",
                 "-o",
                 metavar="PATH",
@@ -40,7 +39,6 @@ def register_condense(app: typer.Typer) -> None:
         max_chunk_s: Annotated[
             float,
             typer.Option(
-                60.0,
                 "--max-chunk-s",
                 help="Hard ceiling for chunk duration (default: 60s for Canary)",
             ),
@@ -48,7 +46,6 @@ def register_condense(app: typer.Typer) -> None:
         search_start_s: Annotated[
             float,
             typer.Option(
-                30.0,
                 "--search-start-s",
                 help="When to start looking for split points (seconds)",
             ),
@@ -56,7 +53,6 @@ def register_condense(app: typer.Typer) -> None:
         min_gap_s: Annotated[
             float,
             typer.Option(
-                3.0,
                 "--min-gap-s",
                 help="Minimum silence gap for natural splits (seconds)",
             ),
@@ -64,7 +60,6 @@ def register_condense(app: typer.Typer) -> None:
         margin_ms: Annotated[
             int,
             typer.Option(
-                300,
                 "--margin-ms",
                 help="Silence margin at chunk edges (milliseconds)",
             ),
@@ -72,7 +67,6 @@ def register_condense(app: typer.Typer) -> None:
         max_intra_gap_ms: Annotated[
             int,
             typer.Option(
-                800,
                 "--max-intra-gap-ms",
                 help="Maximum preserved gap inside chunks (milliseconds)",
             ),

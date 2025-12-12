@@ -12,13 +12,17 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = [
+    pytest.mark.integration,
+    pytest.mark.skipif(
+        shutil.which("ffmpeg") is None,
+        reason="ffmpeg is required for VAD contract tests",
+    ),
+]
+
 SAMPLES_DIR = Path(__file__).resolve().parent / "sample_audio"
 SHORT_FLAC = SAMPLES_DIR / "ASR_Test.flac"
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
-
-pytestmark = pytest.mark.skipif(
-    shutil.which("ffmpeg") is None, reason="ffmpeg is required for VAD contract tests"
-)
 
 if not SHORT_FLAC.exists():
     pytest.skip("Sample audio fixture missing", allow_module_level=True)
@@ -111,12 +115,14 @@ def test_vad_respects_custom_output() -> None:
 
 
 def test_vad_missing_ffmpeg_shows_guidance() -> None:
-    """VAD exits with guidance instead of traceback when ffmpeg is absent."""
+    """VAD exits with rich error panel when ffmpeg is absent."""
     decoded = _decode_sample()
 
     env = {"PATH": ""}
     result = _run_cli(["vad", str(decoded)], env=env)
 
-    assert result.returncode == 2
-    assert "ffmpeg not found. Install ffmpeg and retry." in result.stderr
-    assert "Traceback" not in result.stderr
+    # DependencyError is caught by main() and converted to exit code 1
+    assert result.returncode == 1
+    # Rich error panel with guidance is shown in stdout
+    assert "FFmpeg is not installed" in result.stdout
+    assert "Install FFmpeg" in result.stdout

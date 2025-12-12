@@ -8,7 +8,6 @@ raises a DependencyError so the CLI can fail loudly with guidance.
 from __future__ import annotations
 
 import logging
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -444,42 +443,77 @@ class CanaryQwenEngine(TranscriptionEngine):
 
     @staticmethod
     def _estimate_duration(data: bytes, sample_rate: int = 16000) -> float:
+        """Estimate audio duration from PCM16 byte data.
+        
+        Args:
+            data: Raw PCM16 audio bytes
+            sample_rate: Audio sample rate in Hz (default: 16000)
+            
+        Returns:
+            Duration in seconds
+        """
         if not data:
             return 0.0
-        # PCM16 audio stores one sample per 2 bytes.
+        # PCM16 audio stores one sample per 2 bytes
         samples = len(data) / 2
         return float(samples) / float(sample_rate)
 
     @staticmethod
     def _resolve_device(torch_module: Any, requested: str) -> Any:
+        """Resolve requested device to torch.device.
+        
+        Args:
+            torch_module: The torch module
+            requested: Requested device ("cpu", "cuda", or "auto")
+            
+        Returns:
+            torch.device instance
+        """
         if requested == "cpu":
             return torch_module.device("cpu")
         if requested == "cuda" and torch_module.cuda.is_available():
             return torch_module.device("cuda")
-        # auto or unavailable cuda falls back to cpu
+        # auto or unavailable cuda falls back to best available
         return torch_module.device("cuda" if torch_module.cuda.is_available() else "cpu")
 
     @staticmethod
     def _resolve_asr_tokens(options: TranscriptionOptions | None) -> int:
+        """Resolve max_new_tokens for ASR from options.
+        
+        Args:
+            options: Transcription options (may contain max_new_tokens param)
+            
+        Returns:
+            Token limit (default: 256)
+        """
+        if options is None or not options.params:
+            return 256
         try:
-            raw = options.params.get("max_new_tokens") if options and options.params else None
-            return int(raw) if raw is not None else 256
+            raw = options.params.get("max_new_tokens")
+            if raw is not None:
+                tokens = int(raw)
+                # Clamp to reasonable range
+                return max(64, min(tokens, 4096))
+            return 256
         except (TypeError, ValueError):
             return 256
 
     @staticmethod
     def _resolve_refine_tokens(text: str) -> int:
-        # Keep headroom for longer refinements; cap at 2048 tokens.
-        length_hint = max(512, min(len(text) // 2, 2048))
-        return length_hint
-
-    @staticmethod
-    def _resolve_dtype(torch_module: Any, precision: str) -> Any:
-        mapping: Mapping[str, Any] = {
-            "float16": getattr(torch_module, "float16", None),
-            "fp16": getattr(torch_module, "float16", None),
-            "float32": getattr(torch_module, "float32", None),
-            "fp32": getattr(torch_module, "float32", None),
-            "bfloat16": getattr(torch_module, "bfloat16", None),
-        }
-        return mapping.get(precision, torch_module.float32)
+        """Calculate appropriate token limit for refinement.
+        
+        Refined text is typically similar length to input, with some
+        expansion for improved grammar. Uses conservative estimate.
+        
+        Args:
+            text: Input text to be refined
+            
+        Returns:
+            Token limit for generation (512-2048 range)
+        """
+        if not text:
+            return 512
+        # Approximate 4 characters per token (conservative)
+        # Allow 50% expansion for grammatical improvements
+        estimated_tokens = int(len(text) / 4 * 1.5)
+        return max(512, min(estimated_tokens, 2048))
