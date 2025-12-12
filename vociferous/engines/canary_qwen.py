@@ -41,10 +41,74 @@ DEFAULT_REFINE_PROMPT = (
 )
 
 
+def _suppress_third_party_logging() -> None:
+    """Suppress noisy third-party logging before importing NeMo.
+    
+    NeMo, Transformers, and related libraries produce INFO/WARNING messages
+    that pollute Rich progress displays. This function silences them via
+    environment variables (for NeMo's custom logging) and Python's logging
+    and warnings modules.
+    
+    Must be called BEFORE importing nemo.collections.
+    """
+    import logging
+    import os
+    import warnings
+    
+    # Environment variables for NeMo's custom logging system
+    os.environ["NEMO_LOGGING_LEVEL"] = "ERROR"
+    os.environ["NEMO_TELEMETRY_DISABLE"] = "1"
+    
+    # Suppress Python warnings from third-party libraries
+    warnings.filterwarnings("ignore", message=".*generation_config.*")
+    warnings.filterwarnings("ignore", message=".*special tokens.*")
+    warnings.filterwarnings("ignore", message=".*PADDING.*")
+    warnings.filterwarnings("ignore", message=".*Megatron.*")
+    warnings.filterwarnings("ignore", message=".*LoRA adapter.*")
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
+    warnings.filterwarnings("ignore", category=UserWarning, module="nemo")
+    warnings.filterwarnings("ignore", category=UserWarning, module="peft")
+    
+    # Suppress standard Python loggers
+    noisy_loggers = [
+        "nemo",
+        "nemo_logging",
+        "nemo.collections",
+        "nemo.utils",
+        "transformers",
+        "transformers.generation",
+        "huggingface_hub",
+        "pytorch_lightning",
+        "lightning",
+        "peft",
+        "onelogger",
+    ]
+    for logger_name in noisy_loggers:
+        logging.getLogger(logger_name).setLevel(logging.CRITICAL)
+
+
+def _set_nemo_log_level_after_import() -> None:
+    """Set NeMo log level after import.
+    
+    NeMo's logging system ignores the NEMO_LOGGING_LEVEL environment variable
+    when it's set via Python (os.environ). We must call nemo_logging.setLevel()
+    AFTER importing NeMo.
+    """
+    try:
+        from nemo.utils import logging as nemo_logging  # type: ignore[import-untyped]
+        nemo_logging.setLevel("ERROR")
+    except ImportError:
+        pass  # NeMo not installed
+
+
 class CanaryQwenEngine(TranscriptionEngine):
     """Dual-pass Canary wrapper with batch `transcribe_file` and `refine_text`."""
 
     def __init__(self, config: EngineConfig) -> None:
+        # Suppress third-party logging BEFORE loading model
+        _suppress_third_party_logging()
+        
         self.config = config
         self.model_name = normalize_model_name("canary_qwen", config.model_name)
         self.device = config.device
@@ -151,7 +215,7 @@ class CanaryQwenEngine(TranscriptionEngine):
         ]
         
         # Single batched inference call with inference_mode for speed
-        logger.info(f"Batch transcribing {len(audio_paths)} audio files in single inference call")
+        logger.debug(f"Batch transcribing {len(audio_paths)} audio files in single inference call")
         with torch.inference_mode():
             answer_ids_batch = self._model.generate(
                 prompts=prompts,
@@ -388,49 +452,70 @@ class CanaryQwenEngine(TranscriptionEngine):
     def _lazy_model(self) -> None:
         if self._model is not None:
             return
+        
+        import os
+        import sys
+        
+        # Suppress ALL stdout/stderr during model loading at OS level
+        # This catches: NumExpr "detected N cores", OneLogger initialization,
+        # and libraries that write directly to file descriptors (bypassing sys.stdout)
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        old_stdout_fd = os.dup(1)
+        old_stderr_fd = os.dup(2)
+        os.dup2(devnull_fd, 1)
+        os.dup2(devnull_fd, 2)
+        
         try:
             import torch  # pragma: no cover - optional
             from nemo.collections.speechlm2.models import SALM  # type: ignore[import-untyped]  # pragma: no cover - optional
-        except ImportError as exc:  # pragma: no cover - dependency guard
-            raise DependencyError(
-                "Missing dependencies for Canary-Qwen SALM. Install NeMo trunk (requires torch>=2.6): "
-                "pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\"\n"
-                "Then run: vociferous deps check --engine canary_qwen"
-            ) from exc
+            
+            # Set NeMo log level AFTER import (env vars don't work for NeMo)
+            _set_nemo_log_level_after_import()
+            
+            cache_dir = Path(self.config.model_cache_dir).expanduser() if self.config.model_cache_dir else None
+            if cache_dir:
+                cache_dir.mkdir(parents=True, exist_ok=True)
 
-        cache_dir = Path(self.config.model_cache_dir).expanduser() if self.config.model_cache_dir else None
-        if cache_dir:
-            cache_dir.mkdir(parents=True, exist_ok=True)
+            # Map compute_type to torch dtype to prevent float32 auto-loading
+            dtype_map = {
+                "float32": torch.float32,
+                "float16": torch.float16,
+                "bfloat16": torch.bfloat16,
+            }
+            target_dtype = dtype_map.get(self.config.compute_type, torch.bfloat16)
+            device = self._resolve_device(torch, self.device)
 
-        # Map compute_type to torch dtype to prevent float32 auto-loading
-        # (Issue: Models saved as bfloat16 default-load as float32, doubling VRAM usage)
-        dtype_map = {
-            "float32": torch.float32,
-            "float16": torch.float16,
-            "bfloat16": torch.bfloat16,
-        }
-        target_dtype = dtype_map.get(self.config.compute_type, torch.bfloat16)  # Default to bfloat16
-        device = self._resolve_device(torch, self.device)
-
-        try:
             # Load model with explicit dtype to prevent memory leak
-            # See: https://github.com/huggingface/transformers/issues/34743
             model = SALM.from_pretrained(self.model_name)
             
             # Convert to target dtype BEFORE moving to device to avoid double allocation
             model = model.to(dtype=target_dtype)
             model = model.to(device=device)
             
-            # Enable eval mode for inference optimizations (disables dropout, etc.)
+            # Enable eval mode for inference optimizations
             model = model.eval()
             
             self._model = model
             self._audio_tag = getattr(model, "audio_locator_tag", "<|audioplaceholder|>")
+            
+        except ImportError as exc:  # pragma: no cover - dependency guard
+            raise DependencyError(
+                "Missing dependencies for Canary-Qwen SALM. Install NeMo trunk (requires torch>=2.6): "
+                "pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\"\n"
+                "Then run: vociferous deps check --engine canary_qwen"
+            ) from exc
         except Exception as exc:  # pragma: no cover - optional guard
             raise DependencyError(
-                f"Failed to load Canary-Qwen model '{self.model_name}': {exc}\n"
-                "Ensure NeMo toolkit is installed from trunk: pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\""
+                f"Failed to load Canary-Qwen model '{self.config.model_name}': {exc}\n"
+                "Ensure NeMo toolkit is installed from trunk."
             ) from exc
+        finally:
+            # Always restore stdout/stderr at OS level
+            os.dup2(old_stdout_fd, 1)
+            os.dup2(old_stderr_fd, 2)
+            os.close(devnull_fd)
+            os.close(old_stdout_fd)
+            os.close(old_stderr_fd)
 
     def _load_audio_bytes(self, audio_path: Path) -> bytes:
         try:

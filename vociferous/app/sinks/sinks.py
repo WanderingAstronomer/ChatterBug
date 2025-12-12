@@ -11,15 +11,18 @@ from vociferous.domain.exceptions import DependencyError
 class StdoutSink(TranscriptSink):
     """Simple sink that writes segments and final text to stdout."""
 
-    def __init__(self) -> None:
+    def __init__(self, show_timestamps: bool = False) -> None:
         self._segments: list[TranscriptSegment] = []
+        self._show_timestamps = show_timestamps
 
     def handle_segment(self, segment: TranscriptSegment) -> None:
         self._segments.append(segment)
-        typer.echo(f"{segment.start_s:.2f}-{segment.end_s:.2f}: {segment.text}")
+        if self._show_timestamps:
+            typer.echo(f"{segment.start_s:.2f}-{segment.end_s:.2f}: {segment.text}")
 
     def complete(self, result: TranscriptionResult) -> None:
-        typer.echo("\n=== Transcript ===")
+        if self._show_timestamps:
+            typer.echo("\n=== Transcript ===")
         typer.echo(result.text)
 
 

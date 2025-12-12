@@ -108,12 +108,12 @@ class FFmpegCondenser:
         # Split timestamps into chunks
         chunks = self._split_timestamps_into_chunks(speech_timestamps, split_indices)
         
-        # Log chunking summary
+        # Log chunking summary (DEBUG level to avoid polluting progress display)
         chunk_durations = [
             self._calculate_chunk_duration(c, max_intra_gap_s, boundary_margin_s)
             for c in chunks
         ]
-        logger.info(
+        logger.debug(
             f"Chunking {audio_path.name}: {len(chunks)} chunks, "
             f"durations=[{', '.join(f'{d:.1f}s' for d in chunk_durations)}]"
         )

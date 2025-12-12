@@ -35,12 +35,14 @@ from vociferous.server.client import (
     transcribe_via_daemon,
 )
 from vociferous.server.manager import (
+    AsyncStartupResult,
     DaemonManager,
     DaemonStartError,
     ensure_daemon_running,
 )
 
 __all__ = [
+    "AsyncStartupResult",
     "CACHE_DIR",
     "DEFAULT_DAEMON_HOST",
     "DEFAULT_DAEMON_PORT",

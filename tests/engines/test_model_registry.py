@@ -73,6 +73,21 @@ class TestModelRegistry:
         with pytest.raises(ValueError, match="Invalid model"):
             normalize_model_name("whisper_turbo", "nvidia/canary-qwen-2.5b")
 
+    def test_whisper_detects_faster_whisper_model(self) -> None:
+        """Faster-whisper models are detected and fall back to default."""
+        # This should NOT raise, but instead return the default model
+        result = normalize_model_name(
+            "whisper_turbo", "deepdml/faster-whisper-large-v3-turbo-ct2"
+        )
+        assert result == DEFAULT_WHISPER_MODEL
+
+    def test_whisper_detects_ctranslate_model(self) -> None:
+        """CTranslate2 models are detected and fall back to default."""
+        result = normalize_model_name(
+            "whisper_turbo", "guillaumekln/faster-whisper-large-v2"
+        )
+        assert result == DEFAULT_WHISPER_MODEL
+
     # Cross-engine tests
     def test_unknown_engine_raises_error(self) -> None:
         """Unknown engine kind raises ValueError."""

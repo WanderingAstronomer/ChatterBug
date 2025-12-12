@@ -139,6 +139,7 @@ def build_transcribe_configs_from_cli(
 def build_sink(
     *,
     output: Path | None,
+    show_timestamps: bool = False,
 ) -> TranscriptSink:
     """Build output sink from CLI flags.
     
@@ -146,6 +147,7 @@ def build_sink(
     
     Args:
         output: Optional output file path
+        show_timestamps: If True, print per-segment timestamps (stdout only)
         
     Returns:
         TranscriptSink implementation
@@ -154,7 +156,7 @@ def build_sink(
 
     if output:
         return FileSink(output)
-    return StdoutSink()
+    return StdoutSink(show_timestamps=show_timestamps)
 
 
 def build_audio_source(

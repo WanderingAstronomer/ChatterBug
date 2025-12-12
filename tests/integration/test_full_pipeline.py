@@ -57,5 +57,15 @@ def test_decode_vad_condense_chain(tmp_path: Path) -> None:
 
     cond = _run_cli(["condense", str(timestamps), str(decoded), "--output", str(condensed)], tmp_path)
     assert cond.returncode == 0, f"Condense failed: {cond.stderr}"
-    assert condensed.exists()
-    assert condensed.stat().st_size < decoded.stat().st_size
+    
+    # Condenser may produce a single file OR multiple chunks (part_001, part_002, etc.)
+    # Check for either output format
+    chunk_files = list(tmp_path.glob("*_condensed_part_*.wav"))
+    if condensed.exists():
+        # Single chunk output
+        assert condensed.stat().st_size < decoded.stat().st_size
+    else:
+        # Multiple chunk output - verify at least one chunk exists
+        assert chunk_files, f"No condensed output found: {list(tmp_path.glob('*.wav'))}"
+        total_size = sum(f.stat().st_size for f in chunk_files)
+        assert total_size < decoded.stat().st_size

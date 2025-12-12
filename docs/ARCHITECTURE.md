@@ -1,8 +1,8 @@
 # Vociferous: Executive Architecture Philosophy & Design Principles
 
-**Date:** December 2025
-**Version:** 2.3
-**Status:** Core Architecture Complete (v0.5.0 Alpha)
+**Date:** January 2025
+**Version:** 2.4
+**Status:** GUI-Ready Backend (v0.8.0 Alpha)
 
 > **Note:** The authoritative specification is [Redesign.md](Redesign.md).
 > If this document and the Redesign Document disagree, the Redesign Document wins.
@@ -23,6 +23,111 @@
 | **gui** | ✅ Implemented | KivyMD GUI functional |
 
 **Legend:** ✅ Implemented · 🚧 In Progress · ❌ Not Started · 🔄 Needs Refactor
+
+### GUI-Ready Backend Infrastructure (v0.8.0 Alpha)
+
+The following subsystems were added to support GUI integration:
+
+#### Progress Callback System
+
+- `ProgressCallback` protocol in `domain/protocols.py` enables GUI to receive structured progress updates
+- `ProgressUpdateData` frozen dataclass contains: stage, progress (0-100), message, optional details
+- Three progress modes supported: `"rich"` (CLI with Rich), `"callback"` (GUI), `"silent"` (tests)
+- `CallbackProgressTracker` in `app/progress.py` wraps callbacks with thread-safe updates
+
+```python
+from vociferous.domain.protocols import ProgressCallback, ProgressUpdateData
+
+def gui_callback(update: ProgressUpdateData) -> None:
+    update_progress_bar(update.progress, update.message)
+
+# Pass to workflow
+transcribe_file(audio_path, progress_callback=gui_callback)
+```
+
+#### Error Serialization
+
+- All `VociferousError` subclasses now support `to_dict()` / `from_dict()` for IPC
+- `ErrorDict` TypedDict in `domain/error_schema.py` ensures type-safe serialization
+- `format_error_for_dialog()` in `gui/errors.py` produces GUI-ready error data
+- Errors include ISO 8601 `timestamp` and preserve `caused_by` chain
+
+```python
+from vociferous.domain.exceptions import TranscriptionError
+
+try:
+    transcribe_file(audio_path)
+except TranscriptionError as e:
+    error_dict = e.to_dict()  # Serialize for IPC
+    # {"error_type": "TranscriptionError", "message": "...", "timestamp": "..."}
+```
+
+#### Audio File Validation
+
+- `validate_audio_file()` in `audio/validation.py` extracts metadata via ffprobe
+- Returns `AudioFileInfo` with duration, format, channels, sample_rate, codec
+- `is_supported_format()` checks against `SUPPORTED_EXTENSIONS` frozenset
+- Enables upfront validation before heavy model loading
+
+```python
+from vociferous.audio.validation import validate_audio_file
+
+info = validate_audio_file(Path("lecture.mp3"))
+print(f"Duration: {info.duration}s, Format: {info.format_name}")
+```
+
+#### Async Daemon Startup
+
+- `start_async()` method on `DaemonManager` returns immediately (non-blocking)
+- Returns `AsyncStartupResult` with thread-safe status polling
+- Enables responsive GUI during slow model loading
+- Supports progress callbacks during async startup
+
+```python
+from vociferous.server.manager import DaemonManager
+
+manager = DaemonManager()
+result = manager.start_async()
+
+while result.status == "starting":
+    update_spinner()
+    time.sleep(0.1)
+
+if result.status == "running":
+    # Daemon ready
+elif result.status == "failed":
+    show_error(result.error)
+```
+
+#### Config Schema for GUI
+
+- `ConfigFieldSchema` in `gui/config_schema.py` describes fields for auto-generated forms
+- `get_config_schema()` extracts schema from Pydantic models and dataclasses
+- `FIELD_METADATA` dict provides widget type, help text, choices for GUI
+- `format_validation_errors()` converts Pydantic errors to user-friendly messages
+
+```python
+from vociferous.gui.config_schema import get_config_schema
+from vociferous.config import EngineConfig
+
+schema = get_config_schema(EngineConfig)
+for field in schema:
+    print(f"{field.name}: {field.widget_type} - {field.help_text}")
+```
+
+#### Configuration Presets
+
+- `PresetInfo[T]` generic class in `config/presets.py` with name, description, config
+- `ENGINE_PRESETS`: accuracy_focus, speed_focus, balanced, low_memory
+- `SEGMENTATION_PRESETS`: precise, fast, conversation, podcast, default
+- Getter functions return lists of presets for GUI dropdowns
+
+```python
+from vociferous.config.presets import get_engine_presets
+
+for preset in get_engine_presets():
+    print(f"{preset.name}: {preset.description}")
+```
 
 ### Domain Types and Contracts
 
@@ -60,6 +165,15 @@
 - Refiner contract tests passing with real CLI invocations.
 
 ## Architecture Refactor Progress
+
+**Completed (v0.8.0 Alpha):**
+- [x] Progress callback system for GUI integration
+- [x] Error serialization with to_dict()/from_dict()
+- [x] Audio file validation with ffprobe metadata extraction
+- [x] Async daemon startup for responsive GUI
+- [x] Config schema extraction for auto-generated forms
+- [x] Configuration presets (engine + segmentation)
+- [x] 114 new tests for GUI-readiness features
 
 **Completed (v0.2.0):**
 - [x] Audio preprocessing pipeline (decode, vad, condense, record)

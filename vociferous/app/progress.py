@@ -2,19 +2,26 @@
 
 Provides a unified progress abstraction that works for both CLI (Rich) and GUI.
 This eliminates silent waiting during long transcriptions.
+
+Modes:
+    - rich: Beautiful terminal progress bars using Rich library (CLI default)
+    - callback: Call a callback function with progress updates (GUI mode)
+    - silent: No output (batch processing, tests)
 """
 
 from __future__ import annotations
 
 import logging
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
     from rich.console import Console
     from rich.progress import Progress
+    from vociferous.domain.protocols import ProgressCallback
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +118,195 @@ class SimpleProgressTracker(ProgressTracker):
             print(message, flush=True)
 
 
+class CallbackProgressTracker(ProgressTracker):
+    """Callback-based progress tracker for GUI integration.
+    
+    Instead of displaying progress directly, this tracker calls a callback
+    function with progress updates. This allows GUIs to update their own
+    widgets without depending on any specific UI framework.
+    
+    Example:
+        >>> def update_gui(update: ProgressUpdateData):
+        ...     progress_bar.value = update.progress or 0
+        ...     status_label.text = update.message
+        >>> 
+        >>> tracker = CallbackProgressTracker(callback=update_gui)
+        >>> task = tracker.add_step("Processing...", total=100)
+        >>> tracker.update(task, completed=50)  # Calls update_gui
+        >>> tracker.complete(task)  # Calls update_gui with progress=1.0
+    """
+
+    def __init__(self, callback: ProgressCallback):
+        """Initialize callback tracker.
+        
+        Args:
+            callback: Function to call with progress updates.
+                      Receives ProgressUpdateData instances.
+        
+        Raises:
+            ValueError: If callback is None
+        """
+        if callback is None:
+            raise ValueError("callback parameter required for CallbackProgressTracker")
+        
+        from vociferous.domain.protocols import ProgressUpdateData
+        
+        self._callback = callback
+        self._task_counter = 0
+        self._active_tasks: dict[str, _CallbackTaskState] = {}
+    
+    def add_step(self, description: str, total: int | None = None) -> str:
+        from vociferous.domain.protocols import ProgressUpdateData
+        
+        self._task_counter += 1
+        task_id = f"callback-task-{self._task_counter}"
+        
+        # Extract stage name from description (strip Rich markup)
+        stage = self._extract_stage(description)
+        
+        # Create task state
+        self._active_tasks[task_id] = _CallbackTaskState(
+            stage=stage,
+            description=description,
+            total=total,
+            completed=0,
+            start_time=time.time(),
+        )
+        
+        # Send initial update
+        update = ProgressUpdateData(
+            stage=stage,
+            progress=0.0 if total else None,
+            message=self._clean_description(description),
+            elapsed_s=0.0,
+        )
+        self._callback(update)
+        
+        return task_id
+    
+    def update(self, task_id: Any, *, description: str | None = None, completed: int | None = None) -> None:
+        if task_id not in self._active_tasks:
+            return
+        
+        from vociferous.domain.protocols import ProgressUpdateData
+        
+        state = self._active_tasks[task_id]
+        
+        if description:
+            state.description = description
+        if completed is not None:
+            state.completed = completed
+        
+        # Calculate progress percentage
+        progress: float | None = None
+        if state.total and state.total > 0:
+            progress = state.completed / state.total
+        
+        elapsed = time.time() - state.start_time
+        
+        update = ProgressUpdateData(
+            stage=state.stage,
+            progress=progress,
+            message=self._clean_description(state.description),
+            elapsed_s=elapsed,
+        )
+        self._callback(update)
+    
+    def advance(self, task_id: Any, amount: float = 1.0) -> None:
+        if task_id not in self._active_tasks:
+            return
+        
+        state = self._active_tasks[task_id]
+        state.completed += int(amount)
+        self.update(task_id, completed=state.completed)
+    
+    def complete(self, task_id: Any) -> None:
+        if task_id not in self._active_tasks:
+            return
+        
+        from vociferous.domain.protocols import ProgressUpdateData
+        
+        state = self._active_tasks.pop(task_id)
+        elapsed = time.time() - state.start_time
+        
+        update = ProgressUpdateData(
+            stage=state.stage,
+            progress=1.0,
+            message=self._clean_description(state.description),
+            elapsed_s=elapsed,
+        )
+        self._callback(update)
+    
+    def print(self, message: str, *, style: str | None = None) -> None:
+        # Send as an info update (no specific stage)
+        from vociferous.domain.protocols import ProgressUpdateData
+        
+        # Get current stage from any active task, or "info"
+        current_stage = "info"
+        if self._active_tasks:
+            current_stage = next(iter(self._active_tasks.values())).stage
+        
+        update = ProgressUpdateData(
+            stage=current_stage,
+            progress=None,
+            message=self._clean_description(message),
+        )
+        self._callback(update)
+    
+    def _extract_stage(self, description: str) -> str:
+        """Extract stage name from description.
+        
+        Maps common descriptions to stage names:
+            "Decoding audio..." -> "decode"
+            "Detecting speech..." -> "vad"
+            "Transcribing..." -> "transcribe"
+        
+        Note: Order matters - "transcribe" is checked before "condense"
+        since "Transcribing 3 chunks" contains both keywords.
+        """
+        desc_lower = description.lower()
+        if "decod" in desc_lower:
+            return "decode"
+        if "preprocess" in desc_lower:
+            return "preprocess"
+        if "vad" in desc_lower or "speech" in desc_lower or "segment" in desc_lower:
+            return "vad"
+        # Check transcribe BEFORE condense since "Transcribing chunks" has both
+        if "transcrib" in desc_lower:
+            return "transcribe"
+        if "refin" in desc_lower:
+            return "refine"
+        if "condens" in desc_lower or "chunk" in desc_lower or "split" in desc_lower:
+            return "condense"
+        return "processing"
+    
+    def _clean_description(self, description: str) -> str:
+        """Remove Rich markup from description for GUI display."""
+        import re
+        # Remove Rich markup like [cyan], [green], [/color]
+        return re.sub(r"\[/?[^\]]+\]", "", description).strip()
+
+
+class _CallbackTaskState:
+    """Internal state for callback tracker tasks."""
+    
+    __slots__ = ("stage", "description", "total", "completed", "start_time")
+    
+    def __init__(
+        self,
+        stage: str,
+        description: str,
+        total: int | None,
+        completed: int,
+        start_time: float,
+    ):
+        self.stage = stage
+        self.description = description
+        self.total = total
+        self.completed = completed
+        self.start_time = start_time
+
+
 class RichProgressTracker(ProgressTracker):
     """Rich-based progress tracker with spinners and progress bars."""
 
@@ -140,14 +336,17 @@ class RichProgressTracker(ProgressTracker):
             self._console = Console()
 
             if self.verbose:
+                # Use a custom Progress that handles both determinate and indeterminate tasks
+                # The bar/percentage/remaining columns gracefully hide when total=None
                 self._progress = Progress(
                     SpinnerColumn(),
                     TextColumn("[progress.description]{task.description}"),
-                    BarColumn(),
+                    BarColumn(bar_width=40),
                     TaskProgressColumn(),
                     TimeElapsedColumn(),
                     TimeRemainingColumn(),
                     console=self._console,
+                    expand=False,
                 )
                 self._progress.start()
 
@@ -179,7 +378,9 @@ class RichProgressTracker(ProgressTracker):
             print(f"  → {description}", flush=True)
             return description
 
-        return self._progress.add_task(description, total=total or 100)
+        # For indeterminate tasks (total=None), Rich will show spinner only
+        # For determinate tasks, Rich will show full progress bar
+        return self._progress.add_task(description, total=total)
 
     def update(self, task_id: Any, *, description: str | None = None, completed: int | None = None) -> None:
         if not self.verbose or task_id is None:
@@ -232,18 +433,69 @@ class TranscriptionProgress:
 
     This is the main interface for workflow code. It provides semantic
     methods for common transcription steps.
+    
+    Supports three modes:
+        - "rich": Beautiful terminal progress bars using Rich library (CLI default)
+        - "callback": Call a callback function with progress updates (GUI mode)
+        - "silent": No output (batch processing, tests)
+    
+    Example (CLI):
+        >>> with TranscriptionProgress(mode="rich") as progress:
+        ...     task = progress.start_decode()
+        ...     # ... decode audio ...
+        ...     progress.complete_decode(task)
+    
+    Example (GUI):
+        >>> def update_gui(update: ProgressUpdateData):
+        ...     progress_bar.value = update.progress or 0
+        ...     status_label.text = update.message
+        >>> 
+        >>> with TranscriptionProgress(mode="callback", callback=update_gui) as progress:
+        ...     task = progress.start_decode()
+        ...     # ... decode audio ...
+        ...     progress.complete_decode(task)
     """
 
     def __init__(
         self,
         verbose: bool = True,
         tracker: ProgressTracker | None = None,
+        *,
+        mode: Literal["rich", "callback", "silent"] | None = None,
+        callback: ProgressCallback | None = None,
     ):
+        """Initialize progress tracker.
+        
+        Args:
+            verbose: Legacy parameter for CLI mode. Ignored if mode is specified.
+            tracker: Pre-configured tracker instance (overrides mode).
+            mode: Display mode - "rich" (CLI), "callback" (GUI), or "silent" (tests).
+                  If not specified, inferred from verbose parameter for backward compatibility.
+            callback: Callback function for GUI updates (required if mode="callback").
+        
+        Raises:
+            ValueError: If mode="callback" but callback is None.
+        """
         self.verbose = verbose
-
-        if tracker is not None:
+        
+        # New mode-based initialization
+        if mode is not None:
+            if mode == "callback":
+                if callback is None:
+                    raise ValueError("callback parameter required when mode='callback'")
+                self._tracker: ProgressTracker = CallbackProgressTracker(callback)
+            elif mode == "silent":
+                self._tracker = NullProgressTracker()
+            else:  # mode == "rich"
+                try:
+                    self._tracker = RichProgressTracker(verbose=True)
+                except ImportError:
+                    self._tracker = SimpleProgressTracker(verbose=True)
+        elif tracker is not None:
+            # Legacy: explicit tracker provided
             self._tracker = tracker
         elif verbose:
+            # Legacy: infer from verbose flag
             try:
                 self._tracker = RichProgressTracker(verbose=True)
             except ImportError:
@@ -371,15 +623,34 @@ class TranscriptionProgress:
 
 
 @contextmanager
-def transcription_progress(verbose: bool = True) -> Generator[TranscriptionProgress, None, None]:
+def transcription_progress(
+    verbose: bool = True,
+    *,
+    mode: Literal["rich", "callback", "silent"] | None = None,
+    callback: ProgressCallback | None = None,
+) -> Generator[TranscriptionProgress, None, None]:
     """Context manager for transcription progress tracking.
 
-    Usage:
-        with transcription_progress() as progress:
+    Args:
+        verbose: Legacy parameter for CLI mode. Ignored if mode is specified.
+        mode: Display mode - "rich" (CLI), "callback" (GUI), or "silent" (tests).
+        callback: Callback function for GUI updates (required if mode="callback").
+
+    Usage (CLI):
+        with transcription_progress(mode="rich") as progress:
+            task = progress.start_decode()
+            # ... do work ...
+            progress.complete_decode(task)
+    
+    Usage (GUI):
+        def update_gui(update):
+            progress_bar.value = update.progress or 0
+        
+        with transcription_progress(mode="callback", callback=update_gui) as progress:
             task = progress.start_decode()
             # ... do work ...
             progress.complete_decode(task)
     """
-    progress = TranscriptionProgress(verbose=verbose)
+    progress = TranscriptionProgress(verbose=verbose, mode=mode, callback=callback)
     with progress:
         yield progress

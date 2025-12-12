@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable, Sequence
+from io import StringIO
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Protocol, cast
 
@@ -11,12 +13,22 @@ from vociferous.domain.exceptions import ConfigurationError
 if TYPE_CHECKING:  # Import for type checking only; optional at runtime.
     import torch
 
+# Suppress stdout/stderr during silero_vad import
+# silero_vad imports torch which triggers NumExpr "detected N cores" messages
+# that pollute the Rich progress display
+_original_stdout = sys.stdout
+_original_stderr = sys.stderr
+sys.stdout = StringIO()
+sys.stderr = StringIO()
 try:
     from silero_vad import load_silero_vad
     HAS_SILERO = True
 except ImportError:  # Optional dependency; degrade gracefully without it.
     load_silero_vad = None
     HAS_SILERO = False
+finally:
+    sys.stdout = _original_stdout
+    sys.stderr = _original_stderr
 
 
 SileroGetSpeechFn = Callable[..., list[dict[str, Any]]]

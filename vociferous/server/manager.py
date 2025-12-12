@@ -20,9 +20,10 @@ import os
 import signal
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from vociferous.server.client import (
     DEFAULT_DAEMON_HOST,
@@ -81,6 +82,97 @@ def _get_daemon_pid() -> int | None:
         # PID file is stale or invalid
         _remove_pid_file()
         return None
+
+
+class AsyncStartupResult:
+    """Result of an asynchronous daemon startup operation.
+
+    Provides status tracking and completion waiting for async daemon startup.
+    Used by GUI to monitor startup progress without blocking.
+
+    Attributes:
+        success: Whether startup completed successfully (None if still running)
+        pid: PID of started daemon process (if successful)
+        error: Error message if startup failed
+
+    Example:
+        >>> result = manager.start_async(progress_callback=update_gui)
+        >>> # Check if still in progress
+        >>> if result.is_running:
+        ...     print("Still starting...")
+        >>> # Wait for completion
+        >>> result.wait(timeout=60)
+        >>> if result.success:
+        ...     print(f"Started with PID {result.pid}")
+    """
+
+    def __init__(self) -> None:
+        self._thread: threading.Thread | None = None
+        self._success: bool | None = None
+        self._pid: int | None = None
+        self._error: str | None = None
+        self._lock = threading.Lock()
+
+    @property
+    def success(self) -> bool | None:
+        """Whether startup succeeded (None if still in progress)."""
+        with self._lock:
+            return self._success
+
+    @property
+    def pid(self) -> int | None:
+        """PID of started daemon (None if failed or still running)."""
+        with self._lock:
+            return self._pid
+
+    @property
+    def error(self) -> str | None:
+        """Error message if startup failed."""
+        with self._lock:
+            return self._error
+
+    @property
+    def is_running(self) -> bool:
+        """Whether startup is still in progress."""
+        return self._thread is not None and self._thread.is_alive()
+
+    @property
+    def is_complete(self) -> bool:
+        """Whether startup has completed (success or failure)."""
+        with self._lock:
+            return self._success is not None
+
+    def wait(self, timeout: float | None = None) -> bool:
+        """Wait for startup to complete.
+
+        Args:
+            timeout: Maximum time to wait in seconds. None for infinite wait.
+
+        Returns:
+            True if startup completed (check success for result),
+            False if timeout elapsed before completion.
+        """
+        if self._thread is None:
+            return True
+        self._thread.join(timeout=timeout)
+        return not self._thread.is_alive()
+
+    def _set_thread(self, thread: threading.Thread) -> None:
+        """Internal: Set the startup thread."""
+        self._thread = thread
+
+    def _complete(
+        self,
+        *,
+        success: bool,
+        pid: int | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Internal: Mark startup as complete."""
+        with self._lock:
+            self._success = success
+            self._pid = pid
+            self._error = error
 
 
 class DaemonManager:
@@ -342,6 +434,117 @@ class DaemonManager:
         """
         self.stop()
         return self.start_sync(timeout=timeout, progress=progress)
+
+    def start_async(
+        self,
+        progress_callback: Callable[[str, float], None] | None = None,
+        timeout: float | None = None,
+    ) -> AsyncStartupResult:
+        """Start daemon asynchronously in background thread (non-blocking).
+
+        This is designed for GUI use where blocking the main thread is unacceptable.
+        Returns immediately with an AsyncStartupResult that can be used to check
+        status and wait for completion.
+
+        Args:
+            progress_callback: Optional callback for progress updates.
+                Called with (message, elapsed_seconds) during startup.
+            timeout: Startup timeout in seconds. Defaults to self.timeout.
+
+        Returns:
+            AsyncStartupResult with thread handle and completion status.
+
+        Example:
+            >>> def update_gui(msg: str, elapsed: float) -> None:
+            ...     status_label.text = f"{msg} ({elapsed:.0f}s)"
+            >>>
+            >>> manager = DaemonManager()
+            >>> result = manager.start_async(progress_callback=update_gui)
+            >>> # GUI remains responsive
+            >>> result.wait()  # Wait for completion if needed
+            >>> if result.success:
+            ...     print(f"Daemon started with PID {result.pid}")
+        """
+        effective_timeout = timeout if timeout is not None else self.timeout
+        result = AsyncStartupResult()
+
+        def start_with_progress() -> None:
+            """Background thread function."""
+            start_time = time.time()
+
+            if progress_callback:
+                progress_callback("Starting daemon...", 0.0)
+
+            # Clean up stale PID file
+            _remove_pid_file()
+            _ensure_cache_dir()
+
+            # Prepare uvicorn command
+            cmd = [
+                sys.executable, "-m", "uvicorn",
+                DAEMON_MODULE,
+                "--host", self.host,
+                "--port", str(self.port),
+                "--log-level", "info",
+            ]
+
+            # Start daemon process in background
+            try:
+                with open(LOG_FILE, "w") as log_file:
+                    proc = subprocess.Popen(
+                        cmd,
+                        stdout=log_file,
+                        stderr=subprocess.STDOUT,
+                        start_new_session=True,
+                    )
+                _write_pid_file(proc.pid)
+            except Exception as e:
+                result._complete(
+                    success=False,
+                    error=f"Failed to start daemon process: {e}",
+                )
+                if progress_callback:
+                    progress_callback(
+                        f"✗ Failed to start: {e}",
+                        time.time() - start_time,
+                    )
+                return
+
+            if progress_callback:
+                progress_callback("Loading model...", time.time() - start_time)
+
+            # Poll until ready
+            while time.time() - start_time < effective_timeout:
+                time.sleep(1)
+                elapsed = time.time() - start_time
+
+                if self.is_running():
+                    result._complete(success=True, pid=proc.pid)
+                    if progress_callback:
+                        progress_callback("✓ Daemon ready", elapsed)
+                    return
+
+                if progress_callback:
+                    progress_callback("Loading model...", elapsed)
+
+            # Timeout
+            proc.kill()
+            _remove_pid_file()
+            result._complete(
+                success=False,
+                error=f"Daemon failed to start within {effective_timeout}s",
+            )
+            if progress_callback:
+                progress_callback(
+                    "✗ Daemon failed to start",
+                    time.time() - start_time,
+                )
+
+        # Start in background thread
+        thread = threading.Thread(target=start_with_progress, daemon=True)
+        result._set_thread(thread)
+        thread.start()
+        return result
 
 
 # ============================================================================

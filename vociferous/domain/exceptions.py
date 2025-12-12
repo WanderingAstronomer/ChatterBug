@@ -3,10 +3,13 @@
 This module defines custom exception types with rich error context,
 providing better error categorization, helpful suggestions, and
 formatted output for CLI display.
+
+All exceptions support serialization via to_dict() for GUI/API consumption.
 """
 
 from __future__ import annotations
 
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +45,62 @@ class VociferousError(Exception):
         self.cause = cause
         self.context = context or {}
         self.suggestions = suggestions or []
+        self.timestamp = datetime.now()
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialize error to dictionary for GUI/API consumption.
+        
+        Returns:
+            Dictionary with error details suitable for JSON serialization:
+                - error_type: Exception class name (e.g., 'AudioDecodeError')
+                - message: Human-readable error message
+                - context: Additional context dictionary
+                - suggestions: List of actionable suggestions
+                - timestamp: ISO 8601 timestamp when error occurred
+                - cause: Stringified cause exception (if any)
+        
+        Example:
+            >>> try:
+            ...     raise AudioDecodeError("Test error", context={"file": "test.mp3"})
+            ... except VociferousError as e:
+            ...     error_data = e.to_dict()
+            ...     print(error_data["error_type"])
+            AudioDecodeError
+        """
+        return {
+            "error_type": self.__class__.__name__,
+            "message": self.message,
+            "context": self.context,
+            "suggestions": self.suggestions,
+            "timestamp": self.timestamp.isoformat(),
+            "cause": str(self.cause) if self.cause else None,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> VociferousError:
+        """Deserialize error from dictionary.
+        
+        This creates a VociferousError instance from serialized data,
+        useful for logging, testing, or reconstructing errors.
+        
+        Args:
+            data: Error dictionary from to_dict()
+        
+        Returns:
+            VociferousError instance (note: always returns base class,
+            not the specific subclass from error_type)
+        
+        Example:
+            >>> data = {"message": "Test", "context": {}, "suggestions": []}
+            >>> error = VociferousError.from_dict(data)
+            >>> print(error.message)
+            Test
+        """
+        return cls(
+            message=data.get("message", "Unknown error"),
+            context=data.get("context"),
+            suggestions=data.get("suggestions"),
+        )
 
     def format_error(self) -> str:
         """Format error with full context for display.

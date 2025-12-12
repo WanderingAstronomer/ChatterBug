@@ -58,6 +58,23 @@ def _is_valid_whisper_model(name: str) -> bool:
     return name.lower() in WHISPER_MODELS
 
 
+def _is_faster_whisper_model(name: str) -> bool:
+    """Check if model name appears to be a faster-whisper/CTranslate2 model.
+    
+    These are NOT supported. Vociferous uses official OpenAI Whisper only.
+    """
+    if not name:
+        return False
+    name_lower = name.lower()
+    return (
+        "faster-whisper" in name_lower
+        or "ct2" in name_lower
+        or "ctranslate" in name_lower
+        or name_lower.startswith("deepdml/")
+        or name_lower.startswith("guillaumekln/")
+    )
+
+
 def normalize_model_name(kind: str, model_name: str | None) -> str:
     """Normalize and validate model names for the engine.
 
@@ -107,6 +124,18 @@ def normalize_model_name(kind: str, model_name: str | None) -> str:
     # whisper_turbo
     if _is_valid_whisper_model(model_name):
         return model_lower  # Normalize to lowercase
+    
+    # Check if this is a faster-whisper model (common misconfiguration)
+    if _is_faster_whisper_model(model_name):
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Detected faster-whisper/CTranslate2 model '%s' but Vociferous uses "
+            "official OpenAI Whisper only. Using default model '%s' instead.",
+            model_name,
+            DEFAULT_WHISPER_MODEL,
+        )
+        return DEFAULT_WHISPER_MODEL
     
     models_str = ", ".join(sorted(WHISPER_MODELS))
     raise ValueError(

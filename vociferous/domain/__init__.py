@@ -26,6 +26,11 @@ from .model import (
     TranscriptSegment,
     TranscriptSink,
 )
+from .protocols import (
+    ProgressCallback,
+    ProgressUpdate,
+    ProgressUpdateData,
+)
 
 __all__ = [
     "AudioChunk",
@@ -39,6 +44,9 @@ __all__ = [
     "EngineError",
     "EngineKind",
     "EngineMetadata",
+    "ProgressCallback",
+    "ProgressUpdate",
+    "ProgressUpdateData",
     "RefinementEngine",
     "TranscriptSegment",
     "TranscriptSink",

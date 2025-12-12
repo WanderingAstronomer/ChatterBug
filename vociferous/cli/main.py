@@ -1,9 +1,35 @@
 from __future__ import annotations
 
-import logging
+# =============================================================================
+# CRITICAL: Set environment variables BEFORE any third-party imports
+# This suppresses NeMo, HuggingFace, NumExpr, and other noisy library output
+# =============================================================================
 import os
-import shutil
 import sys
+import warnings
+
+# Suppress third-party logging via environment variables (must be before imports)
+os.environ.setdefault("NEMO_LOGGING_LEVEL", "ERROR")
+os.environ.setdefault("NEMO_TELEMETRY_DISABLE", "1")
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+os.environ.setdefault("TQDM_DISABLE", "1")
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")  # Suppress tokenizers warning
+os.environ.setdefault("NUMEXPR_MAX_THREADS", "16")  # Suppress NumExpr core detection message
+
+# Suppress Python warnings from third-party libraries
+warnings.filterwarnings("ignore", message=".*generation_config.*")
+warnings.filterwarnings("ignore", message=".*special tokens.*")
+warnings.filterwarnings("ignore", message=".*PADDING.*")
+warnings.filterwarnings("ignore", message=".*Megatron.*")
+warnings.filterwarnings("ignore", message=".*OneLogger.*")
+warnings.filterwarnings("ignore", message=".*LoRA adapter.*")
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=UserWarning, module="transformers")
+warnings.filterwarnings("ignore", category=UserWarning, module="nemo")
+
+# Now import standard library and project modules
+import logging
+import shutil
 from pathlib import Path
 from typing import Annotated
 
@@ -347,6 +373,14 @@ def transcribe(
             rich_help_panel="Core Options",
         ),
     ] = None,
+    timestamps: Annotated[
+        bool,
+        typer.Option(
+            "--timestamps/--no-timestamps",
+            help="Show per-segment timestamps in output (default: clean transcript only).",
+            rich_help_panel="Core Options",
+        ),
+    ] = False,
 ) -> None:
     """Transcribe an audio file to text using local ASR engines.
 
@@ -409,7 +443,7 @@ def transcribe(
         raise typer.Exit(code=2) from exc
 
     # Build output sink
-    sink = build_sink(output=output)
+    sink = build_sink(output=output, show_timestamps=timestamps)
     if refiner is not None:
         sink = RefiningSink(sink, refiner)
 

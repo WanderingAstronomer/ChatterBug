@@ -1,4 +1,10 @@
-"""Application-layer orchestration."""
+"""Application-layer orchestration.
+
+NOTE: Third-party logging suppression (NeMo, Transformers, HuggingFace, etc.)
+is handled at the CLI entry point (cli/main.py) via environment variables
+set BEFORE imports. This is required because NeMo uses a custom logging
+system that ignores Python's logging.setLevel().
+"""
 
 import logging
 
@@ -23,28 +29,12 @@ from .workflow import transcribe_file_workflow, transcribe_workflow
 
 
 def configure_logging() -> None:
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
+    """Configure structlog for application logging.
     
-    # Silence verbose third-party logging that pollutes Rich progress display
-    # These libraries produce INFO/WARNING messages during model loading
-    noisy_loggers = [
-        "whisper",           # OpenAI Whisper
-        "nemo",              # NVIDIA NeMo framework
-        "nemo_logging",      # NeMo internal logging
-        "nemo.collections",  # NeMo collections
-        "transformers",      # Hugging Face Transformers
-        "huggingface_hub",   # HF Hub downloads
-        "pytorch_lightning", # Lightning framework
-        "lightning",         # Lightning framework
-        "peft",              # LoRA adapters
-        "onelogger",         # NeMo OneLogger
-        "numexpr",           # NumExpr threading
-        "urllib3",           # HTTP client
-        "filelock",          # File locking
-        "tqdm",              # Progress bars (we use Rich instead)
-    ]
-    for logger_name in noisy_loggers:
-        logging.getLogger(logger_name).setLevel(logging.ERROR)
+    Third-party logging suppression is handled at CLI entry point.
+    See cli/main.py for environment variable setup.
+    """
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     
     structlog.configure(
         processors=[
