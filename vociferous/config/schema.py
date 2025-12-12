@@ -58,8 +58,13 @@ class EngineProfileConfig(BaseModel):
     language: str = "en"
 
     def to_profile(self) -> EngineProfile:
+        model_name = self.model_name
+        # Guardrail: ensure Canary engine uses official model
+        if self.kind == EngineKind.canary_qwen:
+            model_name = DEFAULT_CANARY_MODEL
+
         engine_config = EngineConfig(
-            model_name=self.model_name,
+            model_name=model_name,
             compute_type=self.compute_type,
             device=self.device,
             model_cache_dir=self.model_cache_dir,
@@ -369,12 +374,25 @@ def save_config(config: AppConfig, config_path: Path | None = None) -> None:
     # Ensure config directory exists
     config_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Convert config to dict
-    config_dict = config.model_dump(exclude_none=True)
+    # Convert config to dict and stringify Path objects for TOML
+    config_dict = _stringify_paths(config.model_dump(exclude_none=True))
     
     # Write to TOML file
     with open(config_path, "wb") as f:
         tomli_w.dump(config_dict, f)
+
+
+def _stringify_paths(value: Any) -> Any:
+    """Recursively convert pathlib.Path objects to strings for TOML serialization."""
+    from pathlib import Path
+
+    if isinstance(value, dict):
+        return {k: _stringify_paths(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_stringify_paths(v) for v in value]
+    if isinstance(value, Path):
+        return str(value)
+    return value
 
 
 def _default_engine_profiles() -> dict[str, EngineProfileConfig]:

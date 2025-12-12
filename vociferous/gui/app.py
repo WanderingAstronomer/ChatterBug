@@ -5,21 +5,30 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+# Disable multitouch emulation (red dots on right-click) - MUST be before other kivy imports
+from kivy.config import Config
+Config.set('input', 'mouse', 'mouse,disable_multitouch')
+
 import structlog
 from kivy.core.window import Window
+from kivy.metrics import Metrics
 from kivy.uix.screenmanager import NoTransition, Screen, ScreenManager
 from kivymd.app import MDApp
 from kivymd.uix.boxlayout import MDBoxLayout
 from kivymd.uix.list import IconLeftWidget, OneLineIconListItem
 from kivymd.uix.navigationdrawer import MDNavigationDrawer, MDNavigationLayout
-from kivymd.uix.snackbar import MDSnackbar
 from kivymd.uix.toolbar import MDTopAppBar
 
 from .installer import InstallMode
-from .screens import HomeScreen, SettingsScreen
+from .home_screen import EnhancedHomeScreen
+from .history_screen import HistoryScreen
+from .settings_screen import EnhancedSettingsScreen
 from .splash import SplashScreen
 
 logger = structlog.get_logger(__name__)
+
+# Default font scale for better readability
+DEFAULT_FONT_SCALE = 1.4
 
 
 class VociferousGUIApp(MDApp):
@@ -36,10 +45,11 @@ class VociferousGUIApp(MDApp):
         self.theme_cls.accent_palette = "LightBlue"
         self.theme_cls.accent_hue = "400"
         
-        # Window configuration
-        Window.size = (1200, 800)
-        Window.minimum_width = 800
-        Window.minimum_height = 600
+        # Font scaling factor (increase for larger fonts)
+        self.font_scale = DEFAULT_FONT_SCALE
+        
+        # Apply font scale to Kivy metrics
+        Metrics.fontscale = self.font_scale
         
         self.screen_manager: ScreenManager | None = None
         self.nav_drawer: MDNavigationDrawer | None = None
@@ -102,8 +112,9 @@ class VociferousGUIApp(MDApp):
         
         # Screen manager for main content pages
         self.screen_manager = ScreenManager()
-        self.screen_manager.add_widget(HomeScreen(name="home"))
-        self.screen_manager.add_widget(SettingsScreen(name="settings"))
+        self.screen_manager.add_widget(EnhancedHomeScreen(name="home"))
+        self.screen_manager.add_widget(HistoryScreen(name="history"))
+        self.screen_manager.add_widget(EnhancedSettingsScreen(name="settings"))
         
         # Wrap toolbar and content into a screen so MDNavigationLayout
         # sees a ScreenManager as its primary child (required by KivyMD).
@@ -128,6 +139,7 @@ class VociferousGUIApp(MDApp):
         # Navigation items
         nav_items = [
             ("home", "Home"),
+            ("history", "History"),
             ("cog", "Settings"),
         ]
         
@@ -169,16 +181,9 @@ class VociferousGUIApp(MDApp):
             self.nav_drawer.set_state("close")
 
     def show_notification(self, message: str, duration: float = 3) -> None:
-        """Show a snackbar notification.
-        
-        Args:
-            message: Message to display
-            duration: Duration in seconds to show the notification
-        """
-        snackbar = MDSnackbar(
-            text=message,
-            duration=duration,
-        )
+        """Show a snackbar notification (compatible with KivyMD 1.2.0)."""
+        from kivymd.uix.snackbar import MDSnackbar
+        snackbar = MDSnackbar(message, duration=duration)
         snackbar.open()
 
     def _on_keyboard(self, window: Any, key: int, scancode: int, codepoint: str | None, modifier: list[str]) -> bool:
@@ -197,6 +202,14 @@ class VociferousGUIApp(MDApp):
                 home_screen = self.screen_manager.get_screen('home')
                 if hasattr(home_screen, '_browse_files'):
                     home_screen._browse_files()
+                    return True
+        
+        # Ctrl+R: Record from microphone (only on home screen)
+        elif 'ctrl' in modifier and codepoint == 'r':
+            if self.screen_manager and self.screen_manager.current == 'home':
+                home_screen = self.screen_manager.get_screen('home')
+                if hasattr(home_screen, '_show_record_dialog'):
+                    home_screen._show_record_dialog()
                     return True
         
         # Ctrl+T: Start transcription (only on home screen)
@@ -229,6 +242,15 @@ class VociferousGUIApp(MDApp):
                 home_screen = self.screen_manager.get_screen('home')
                 if hasattr(home_screen, '_cancel_operation'):
                     home_screen._cancel_operation()
+                    return True
+        
+        # F5: Refresh history (only on history screen)
+        elif key == 286:  # F5 key
+            if self.screen_manager and self.screen_manager.current == 'history':
+                history_screen = self.screen_manager.get_screen('history')
+                if hasattr(history_screen, '_load_history'):
+                    history_screen._load_history()
+                    self.show_notification("History refreshed")
                     return True
         
         return False

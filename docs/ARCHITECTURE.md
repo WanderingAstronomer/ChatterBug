@@ -1,8 +1,8 @@
 # Vociferous: Executive Architecture Philosophy & Design Principles
 
-**Date:** January 2025
-**Version:** 2.4
-**Status:** GUI-Ready Backend (v0.8.0 Alpha)
+**Date:** December 2025
+**Version:** 2.5
+**Status:** Production GUI (v0.8.1 Alpha)
 
 > **Note:** The authoritative specification is [Redesign.md](Redesign.md).
 > If this document and the Redesign Document disagree, the Redesign Document wins.
@@ -20,9 +20,89 @@
 | **domain** | ✅ Implemented | Core types, models, exceptions defined |
 | **sources** | ✅ Implemented | File sources and microphone capture working |
 | **server** | ✅ Implemented | FastAPI daemon for warm model inference (v0.5.0) |
-| **gui** | ✅ Implemented | KivyMD GUI functional |
+| **gui** | ✅ Implemented | KivyMD GUI with production screens, widgets, animations (v0.8.1) |
 
 **Legend:** ✅ Implemented · 🚧 In Progress · ❌ Not Started · 🔄 Needs Refactor
+
+### GUI Implementation (v0.8.1 Alpha)
+
+The GUI module provides a complete KivyMD-based graphical interface following Design.md:
+
+#### Screen Architecture
+
+| Screen | File | Description |
+|--------|------|-------------|
+| **EnhancedHomeScreen** | `home_screen.py` | Main transcription workflow with mode switcher, drag-drop, progress |
+| **HistoryScreen** | `history_screen.py` | SQLite-backed history browser with search/filter |
+| **EnhancedSettingsScreen** | `settings_screen.py` | Tabbed settings (Profiles, Engine, Segmentation, Appearance) |
+
+#### Widget Library (`widgets.py`)
+
+Reusable components following Material Design:
+
+| Widget | Purpose |
+|--------|---------|
+| `Colors` | Material Design color constants (SUCCESS, WARNING, ERROR, INFO, SURFACE) |
+| `AudioFileCard` | Displays audio metadata (duration, format, sample rate, channels) |
+| `PipelineStageIndicator` | Visual Decode→VAD→Condense→Transcribe→Refine progress |
+| `ProgressCard` | Progress display with elapsed time, RTF metric, stage indicator |
+| `DaemonStatusWidget` | Daemon state (running/starting/stopped/error) with model info |
+| `PresetCard` | Visual preset selector with selection state |
+| `TooltipButton` | Button with tooltip support |
+
+#### Error Dialogs (`error_dialogs.py`)
+
+Enhanced error handling with structured recovery:
+
+```python
+from vociferous.gui.error_dialogs import show_error, show_transcription_error
+
+# Generic error with suggestions
+show_error(
+    title="Transcription Failed",
+    message="Model failed to load",
+    details="CUDA out of memory",
+    suggestions=["Try a smaller model", "Close other GPU applications"],
+    show_retry=True,
+    on_retry=retry_callback,
+)
+
+# Stage-specific error with auto-generated suggestions
+show_transcription_error(
+    message="Audio decode failed",
+    stage="decode",  # Provides decode-specific recovery steps
+    audio_file="/path/to/audio.mp3",
+)
+```
+
+#### Animation Utilities (`animations.py`)
+
+```python
+from vociferous.gui.animations import FadeTransition, AnimatedProgressBar, LoadingSpinner
+
+# Fade widget in/out
+FadeTransition.fade_in(widget, duration=0.3)
+FadeTransition.fade_out(widget, duration=0.3)
+
+# Animated progress bar (smooth transitions)
+progress = AnimatedProgressBar()
+progress.set_progress(50, animate=True)
+
+# Loading spinner with message
+spinner = LoadingSpinner(message="Loading model...")
+spinner.is_active = True
+```
+
+#### Keyboard Shortcuts
+
+| Shortcut | Action | Context |
+|----------|--------|---------|
+| `Ctrl+O` | Browse files | Home screen |
+| `Ctrl+T` | Start transcription | Home screen |
+| `Ctrl+S` | Save transcript | Home screen |
+| `Ctrl+,` | Open settings | Global |
+| `Esc` | Cancel/close drawer | Global |
+| `F5` | Refresh history | History screen |
 
 ### GUI-Ready Backend Infrastructure (v0.8.0 Alpha)
 
@@ -905,7 +985,7 @@ Vociferous is organized into **9 modules**, each with a clear responsibility and
 | **config** | Configuration management | ❌ No | Settings, defaults, config file handling |
 | **domain** | Core domain models & protocols | ❌ No | Typed data structures, contracts, errors |
 | **sources** | Audio input abstractions | ❌ No | File/memory/microphone sources producing files (FileSource, MemorySource, MicSource) |
-| **gui** | Graphical user interface | ❌ No (separate interface) | KivyMD GUI wrapper around workflows |
+| **gui** | Graphical user interface | ❌ No (separate interface) | KivyMD screens, widgets, animations, error dialogs |
 
 **Notes:**
 - **Canary-Qwen is the default production engine** with dual-pass (ASR + refinement) fully working.
@@ -914,6 +994,36 @@ Vociferous is organized into **9 modules**, each with a clear responsibility and
 - The `app` module coordinates workflows explicitly—there is **no** `TranscriptionSession` or `SegmentArbiter`.
 - **Audio module contains only primitives** (decoder, VAD, condenser, recorder classes); **CLI adapters** (DecoderComponent, VADComponent, etc.) are in `cli.components`.
 - **Config module centralizes profiles**: engine profiles (kind, precision, model name) and segmentation profiles (Silero VAD/condense parameters) live in `~/.config/vociferous/config.toml` with defaults `canary_qwen_fp16` and `default`.
+- **GUI module is self-contained**: All screens, widgets, and animations are composable and use backend infrastructure (progress callbacks, error serialization, config schema).
+
+### **GUI Module Organization**
+
+The GUI module (`vociferous/gui/`) is organized into distinct layers:
+
+**Screens (Top-Level Views)**
+- `home_screen.py` - Main transcription workflow (EnhancedHomeScreen)
+- `history_screen.py` - History browser with SQLite persistence (HistoryScreen)
+- `settings_screen.py` - Tabbed settings interface (EnhancedSettingsScreen)
+- `splash.py` - First-run splash screen
+
+**Widgets (Reusable Components)**
+- `widgets.py` - Core widget library (Colors, AudioFileCard, ProgressCard, PresetCard, etc.)
+
+**Support (Error Handling & Effects)**
+- `error_dialogs.py` - Structured error display with recovery suggestions
+- `animations.py` - Animation utilities (fade, slide, pulse, loading spinner)
+
+**Integration (Backend Bridge)**
+- `config_schema.py` - Auto-generate forms from config classes
+- `errors.py` - Format exceptions for dialog display
+- `validation.py` - User-friendly validation error messages
+
+**GUI Design Principles:**
+- **Mode switching**: Simple/Advanced/Expert controls UI complexity
+- **Transparency**: Pipeline stages visible via PipelineStageIndicator
+- **Fail-loud**: Enhanced error dialogs with expandable details
+- **Responsive**: Async operations with loading spinners
+- **Consistent**: Material Design colors and spacing throughout
 
 ### **Module Organization Principles**
 

@@ -231,9 +231,9 @@ class HomeScreen(Screen):
                 self.selected_file = selected
                 self.file_path_field.text = str(selected)
                 self.transcribe_button.disabled = False
-                self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]✓ File ready[/color]"
+                self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]File ready[/color]"
             else:
-                self.status_label.text = f"[color=#{self.COLOR_WARNING}]⚠ Not a supported audio format[/color]"
+                self.status_label.text = f"[color=#{self.COLOR_WARNING}]Not a supported audio format[/color]"
         
         self._exit_file_manager()
 
@@ -278,7 +278,7 @@ class HomeScreen(Screen):
         """
         logger.info("Transcription complete")
         self.output_field.text = text
-        self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]✓ Complete![/color]"
+        self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]Complete![/color]"
         self.transcribe_button.disabled = False
         self.save_button.disabled = False
         
@@ -340,7 +340,7 @@ class HomeScreen(Screen):
             output_path.write_text(self.output_field.text, encoding='utf-8')
             logger.info("Transcript saved", path=str(output_path))
             
-            self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]✓ Saved to {output_path.name}[/color]"
+            self.status_label.text = f"[color=#{self.COLOR_SUCCESS}]Saved to {output_path.name}[/color]"
             
             # Show notification
             app = _get_app()
@@ -360,7 +360,7 @@ class HomeScreen(Screen):
         current_task = self.transcription_manager.current_task if self.transcription_manager else None
         if current_task and current_task.is_running:
             self.transcription_manager.stop_current()
-            self.status_label.text = f"[color=#{self.COLOR_WARNING}]⚠ Cancelled[/color]"
+            self.status_label.text = f"[color=#{self.COLOR_WARNING}]Cancelled[/color]"
             self.transcribe_button.disabled = False
             
             # Show notification
