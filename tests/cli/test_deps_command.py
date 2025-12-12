@@ -5,9 +5,6 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
-from pathlib import Path
-
-import pytest
 
 
 def _run_cli(args: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:

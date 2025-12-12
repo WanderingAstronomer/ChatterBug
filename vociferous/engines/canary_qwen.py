@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 """
 Canary-Qwen 2.5B dual-pass engine (ASR + refinement).
 
@@ -7,18 +5,21 @@ Mocks are disallowed at runtime. If dependencies or downloads fail, the engine
 raises a DependencyError so the CLI can fail loudly with guidance.
 """
 
-import logging
-from pathlib import Path
-from typing import Any, Mapping
+from __future__ import annotations
 
+import logging
+from collections.abc import Mapping
+from pathlib import Path
+from typing import Any
+
+from vociferous.domain.exceptions import DependencyError
 from vociferous.domain.model import (
     EngineConfig,
     EngineMetadata,
-    TranscriptSegment,
     TranscriptionEngine,
     TranscriptionOptions,
+    TranscriptSegment,
 )
-from vociferous.domain.exceptions import DependencyError
 from vociferous.engines.model_registry import normalize_model_name
 
 logger = logging.getLogger(__name__)
@@ -160,7 +161,7 @@ class CanaryQwenEngine(TranscriptionEngine):
         
         # Parse results
         results: list[list[TranscriptSegment]] = []
-        for idx, (answer_ids, duration_s, audio_path) in enumerate(
+        for idx, (answer_ids, duration_s, _audio_path) in enumerate(
             zip(answer_ids_batch, durations, audio_paths)
         ):
             transcript_text = self._model.tokenizer.ids_to_text(answer_ids.cpu())
@@ -391,12 +392,12 @@ class CanaryQwenEngine(TranscriptionEngine):
         try:
             import torch  # pragma: no cover - optional
             from nemo.collections.speechlm2.models import SALM  # pragma: no cover - optional
-        except ImportError:  # pragma: no cover - dependency guard
+        except ImportError as exc:  # pragma: no cover - dependency guard
             raise DependencyError(
                 "Missing dependencies for Canary-Qwen SALM. Install NeMo trunk (requires torch>=2.6): "
                 "pip install \"nemo_toolkit[asr,tts] @ git+https://github.com/NVIDIA/NeMo.git\"\n"
                 "Then run: vociferous deps check --engine canary_qwen"
-            )
+            ) from exc
 
         cache_dir = Path(self.config.model_cache_dir).expanduser() if self.config.model_cache_dir else None
         if cache_dir:

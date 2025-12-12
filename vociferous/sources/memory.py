@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 import wave
+from pathlib import Path
 
 from vociferous.sources.base import Source
 

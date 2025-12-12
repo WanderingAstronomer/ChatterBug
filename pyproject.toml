@@ -68,6 +68,29 @@ module = [
 ]
 ignore_errors = true
 
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+indent-width = 4
+
+[tool.ruff.lint]
+select = [
+  "E4",
+  "E7",
+  "E9",
+  "F",
+  "I",
+  "B",
+  "UP",
+  "SIM",
+  "C4",
+  "ERA",
+  "RUF",
+]
+ignore = [
+  "B905",
+]
+
 [build-system]
 requires = ["setuptools>=64"]
 build-backend = "setuptools.build_meta"

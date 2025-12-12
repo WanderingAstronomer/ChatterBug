@@ -1,11 +1,11 @@
-from __future__ import annotations
-
 """
 Official OpenAI Whisper engine for local ASR.
 
 Uses the official openai-whisper package (NOT faster-whisper, NOT CTranslate2).
 Supports Whisper Turbo, V3, and Large models.
 """
+
+from __future__ import annotations
 
 import logging
 import wave
@@ -14,15 +14,15 @@ from typing import Any
 
 import numpy as np
 
+from vociferous.domain.exceptions import DependencyError
 from vociferous.domain.model import (
     DEFAULT_MODEL_CACHE_DIR,
     EngineConfig,
     EngineMetadata,
-    TranscriptSegment,
     TranscriptionEngine,
     TranscriptionOptions,
+    TranscriptSegment,
 )
-from vociferous.domain.exceptions import DependencyError
 from vociferous.engines.hardware import get_optimal_device
 from vociferous.engines.model_registry import normalize_model_name
 

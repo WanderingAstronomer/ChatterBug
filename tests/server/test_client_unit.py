@@ -11,8 +11,9 @@ For tests that require a running daemon, see test_daemon_integration.py
 from __future__ import annotations
 
 import os
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 class TestDaemonClientInitialization:
@@ -21,10 +22,10 @@ class TestDaemonClientInitialization:
     def test_client_initialization_defaults(self) -> None:
         """Test DaemonClient initializes with correct defaults."""
         from vociferous.server.client import (
-            DaemonClient,
             DEFAULT_DAEMON_HOST,
             DEFAULT_DAEMON_PORT,
             DEFAULT_TIMEOUT_S,
+            DaemonClient,
         )
         
         client = DaemonClient()
@@ -60,12 +61,10 @@ class TestExceptionHierarchy:
 
     def test_daemon_error_is_base_exception(self) -> None:
         """Test DaemonError is the base for all daemon exceptions."""
+        from vociferous.domain.exceptions import VociferousError
         from vociferous.server.client import (
             DaemonError,
-            DaemonNotRunningError,
-            DaemonTimeoutError,
         )
-        from vociferous.domain.exceptions import VociferousError
         
         # DaemonError should inherit from VociferousError
         assert issubclass(DaemonError, VociferousError)
@@ -244,11 +243,11 @@ class TestConvenienceFunctionBehavior:
     def test_convenience_functions_exist(self) -> None:
         """Test all convenience functions are exported."""
         from vociferous.server.client import (
-            transcribe_via_daemon,
-            refine_via_daemon,
             batch_transcribe_via_daemon,
-            is_daemon_running,
             get_daemon_pid,
+            is_daemon_running,
+            refine_via_daemon,
+            transcribe_via_daemon,
         )
         
         # All should be callable

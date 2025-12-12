@@ -1,7 +1,7 @@
 """Refining sink decorator for transcript post-processing."""
 from __future__ import annotations
 
-from vociferous.domain import TranscriptSegment, TranscriptSink, TranscriptionResult
+from vociferous.domain import TranscriptionResult, TranscriptSegment, TranscriptSink
 from vociferous.refinement.base import Refiner
 
 

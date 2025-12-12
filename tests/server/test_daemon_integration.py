@@ -14,7 +14,6 @@ Skip with: pytest tests/server/ -v -m "not slow"
 
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import time
@@ -46,7 +45,7 @@ def wait_for_daemon(timeout: int = 60, check_model: bool = True) -> bool:
 
 def stop_daemon_if_running() -> None:
     """Stop daemon if it's running."""
-    result = subprocess.run(
+    subprocess.run(
         [sys.executable, "-m", "vociferous", "daemon", "stop"],
         capture_output=True,
         text=True,
@@ -99,7 +98,7 @@ class TestDaemonLifecycle:
         
         try:
             # Start daemon
-            result = subprocess.run(
+            subprocess.run(
                 [sys.executable, "-m", "vociferous", "daemon", "start", "--detach"],
                 capture_output=True,
                 text=True,
@@ -150,7 +149,7 @@ class TestDaemonLifecycle:
             
             # Verify stopped
             time.sleep(2)
-            with pytest.raises(Exception):
+            with pytest.raises(requests.exceptions.RequestException):
                 requests.get("http://127.0.0.1:8765/health", timeout=2)
                 
         finally:
@@ -167,8 +166,8 @@ class TestDaemonTranscription:
     )
     def test_transcribe_via_daemon(self, running_daemon) -> None:
         """Test transcription through daemon with real audio."""
-        from vociferous.server.client import DaemonClient
         from vociferous.domain.model import TranscriptSegment
+        from vociferous.server.client import DaemonClient
         
         client = DaemonClient()
         

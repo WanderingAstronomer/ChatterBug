@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any, Generator
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -42,11 +43,12 @@ class ProgressTracker(ABC):
         """Print a message without disrupting progress display."""
         ...
 
-    def __enter__(self) -> "ProgressTracker":
+    def __enter__(self) -> ProgressTracker:
         return self
 
     def __exit__(self, *args) -> None:
-        pass
+        """Allow context manager usage without requiring cleanup."""
+        return None
 
 
 class NullProgressTracker(ProgressTracker):
@@ -122,11 +124,11 @@ class RichProgressTracker(ProgressTracker):
         try:
             from rich.console import Console
             from rich.progress import (
+                BarColumn,
                 Progress,
                 SpinnerColumn,
-                TextColumn,
-                BarColumn,
                 TaskProgressColumn,
+                TextColumn,
                 TimeElapsedColumn,
                 TimeRemainingColumn,
             )
@@ -152,7 +154,7 @@ class RichProgressTracker(ProgressTracker):
             logger.warning("Rich not available, using simple progress")
             self._started = True
 
-    def __enter__(self) -> "RichProgressTracker":
+    def __enter__(self) -> RichProgressTracker:
         self._ensure_started()
         return self
 
@@ -240,7 +242,6 @@ class TranscriptionProgress:
             self._tracker = tracker
         elif verbose:
             try:
-                from rich.console import Console
                 self._tracker = RichProgressTracker(verbose=True)
             except ImportError:
                 self._tracker = SimpleProgressTracker(verbose=True)
@@ -249,7 +250,7 @@ class TranscriptionProgress:
 
         self._current_task: Any = None
 
-    def __enter__(self) -> "TranscriptionProgress":
+    def __enter__(self) -> TranscriptionProgress:
         self._tracker.__enter__()
         return self
 
@@ -265,6 +266,15 @@ class TranscriptionProgress:
     def complete_decode(self, task_id: Any) -> None:
         """Complete the decode step."""
         self._tracker.update(task_id, description="[green]✓ Audio decoded")
+        self._tracker.complete(task_id)
+
+    def start_preprocess(self) -> Any:
+        """Start the preprocessing step."""
+        return self._tracker.add_step("[cyan]Preprocessing audio...", total=None)
+
+    def complete_preprocess(self, task_id: Any, preset: str) -> None:
+        """Complete the preprocessing step."""
+        self._tracker.update(task_id, description=f"[green]✓ Audio preprocessed ({preset})")
         self._tracker.complete(task_id)
 
     def start_vad(self) -> Any:

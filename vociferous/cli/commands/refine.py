@@ -1,51 +1,67 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from vociferous.cli.helpers import build_refiner_config
 from vociferous.config import load_config
-from vociferous.domain.model import DEFAULT_CANARY_MODEL
 from vociferous.domain.exceptions import ConfigurationError, DependencyError
+from vociferous.domain.model import DEFAULT_CANARY_MODEL
 from vociferous.refinement.factory import build_refiner
 
 
 def register_refine(app: typer.Typer) -> None:
     @app.command("refine", rich_help_panel="Refinement Components")
     def refine_cmd(
-        input: Path = typer.Argument(..., metavar="TRANSCRIPT", help="Path to raw transcript text file"),
-        output: Path | None = typer.Option(
-            None,
-            "--output",
-            "-o",
-            metavar="PATH",
-            help="Write refined text to file (default: stdout)",
-        ),
-        mode: str | None = typer.Option(
-            None,
-            "--mode",
-            help="Refinement mode: grammar_only (default), summary, bullet_points",
-            show_default=False,
-        ),
-        instructions: str | None = typer.Option(
-            None,
-            "--instructions",
-            "-i",
-            help="Custom refinement instructions (overrides mode)",
-            show_default=False,
-        ),
-        model: str | None = typer.Option(
-            None,
-            "--model",
-            "-m",
-            help="Refiner model (defaults to config refinement_model)",
-            show_default=False,
-        ),
-        max_tokens: int = typer.Option(128, help="Max tokens for LLM-based refiners"),
-        temperature: float = typer.Option(0.2, help="Temperature for LLM-based refiners"),
-        gpu_layers: int = typer.Option(0, help="GPU layers for llama-cpp refiners"),
-        context_length: int = typer.Option(2048, help="Context length for llama-cpp refiners"),
+        input: Annotated[
+            Path,
+            typer.Argument(..., metavar="TRANSCRIPT", help="Path to raw transcript text file"),
+        ],
+        output: Annotated[
+            Path | None,
+            typer.Option(
+                None,
+                "--output",
+                "-o",
+                metavar="PATH",
+                help="Write refined text to file (default: stdout)",
+            ),
+        ] = None,
+        mode: Annotated[
+            str | None,
+            typer.Option(
+                None,
+                "--mode",
+                help="Refinement mode: grammar_only (default), summary, bullet_points",
+                show_default=False,
+            ),
+        ] = None,
+        instructions: Annotated[
+            str | None,
+            typer.Option(
+                None,
+                "--instructions",
+                "-i",
+                help="Custom refinement instructions (overrides mode)",
+                show_default=False,
+            ),
+        ] = None,
+        model: Annotated[
+            str | None,
+            typer.Option(
+                None,
+                "--model",
+                "-m",
+                help="Refiner model (defaults to config refinement_model)",
+                show_default=False,
+            ),
+        ] = None,
+        max_tokens: Annotated[int, typer.Option(help="Max tokens for LLM-based refiners")] = 128,
+        temperature: Annotated[float, typer.Option(help="Temperature for LLM-based refiners")] = 0.2,
+        gpu_layers: Annotated[int, typer.Option(help="GPU layers for llama-cpp refiners")] = 0,
+        context_length: Annotated[int, typer.Option(help="Context length for llama-cpp refiners")] = 2048,
     ) -> None:
         """Refine a transcript text file using Canary-Qwen LLM.
 

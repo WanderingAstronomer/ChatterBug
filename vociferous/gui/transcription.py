@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Callable
 import threading
+from collections.abc import Callable
+from pathlib import Path
 
 import structlog
 
@@ -119,7 +119,7 @@ class TranscriptionTask:
                 
         except Exception as e:
             logger.error("Transcription error", error=str(e))
-            error_msg = f"Transcription failed: {str(e)}"
+            error_msg = f"Transcription failed: {e!s}"
             if self.on_error:
                 self.on_error(error_msg)
         finally:

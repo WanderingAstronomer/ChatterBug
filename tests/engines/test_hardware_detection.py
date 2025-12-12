@@ -6,8 +6,6 @@ Validates device detection logic for both CPU and GPU systems.
 
 from __future__ import annotations
 
-import pytest
-
 from vociferous.engines.hardware import get_optimal_compute_type, get_optimal_device
 
 

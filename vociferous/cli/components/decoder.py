@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import wave
+from pathlib import Path
 
 from vociferous.audio.decoder import FfmpegDecoder
 

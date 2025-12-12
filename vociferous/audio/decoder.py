@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Iterable, Protocol
+from pathlib import Path
+from typing import Protocol
 
 from vociferous.audio.utilities import chunk_pcm_bytes
-from vociferous.domain.exceptions import AudioDecodeError
+from vociferous.domain.exceptions import AudioDecodeError, DependencyError
 from vociferous.domain.model import AudioChunk
 
 
@@ -54,9 +56,11 @@ class FfmpegDecoder:
             "pipe:1",
         ]
         input_bytes: bytes
+        source_path: Path | None = None
         if isinstance(source, bytes):
             input_bytes = source
         else:
+            source_path = Path(source)
             with open(source, "rb") as f:
                 input_bytes = f.read()
 
@@ -70,11 +74,20 @@ class FfmpegDecoder:
                     check=False,
                 )
             except FileNotFoundError as exc:
-                raise FileNotFoundError("ffmpeg binary not found; install ffmpeg or adjust PATH") from exc
+                raise DependencyError.missing_ffmpeg() from exc
             if proc.returncode != 0:
                 stderr.seek(0)
                 err_text = stderr.read().decode(errors="ignore")
-                raise AudioDecodeError(f"ffmpeg decode failed (code {proc.returncode}): {err_text}")
+                if source_path:
+                    raise AudioDecodeError.from_ffmpeg_error(
+                        source_path, proc.returncode, err_text
+                    )
+                else:
+                    raise AudioDecodeError(
+                        "Failed to decode audio from bytes",
+                        context={"ffmpeg_exit_code": proc.returncode},
+                        suggestions=["Ensure audio data is in a valid format"],
+                    )
             pcm = proc.stdout
 
         sample_rate = 16000
@@ -120,8 +133,7 @@ class FfmpegDecoder:
         try:
             proc = subprocess.run(
                 [path, "-version"],
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 check=False,
             )
         except OSError:

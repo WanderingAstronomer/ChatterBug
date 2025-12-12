@@ -1,21 +1,23 @@
 """Composable CLI command registrations for Typer."""
 
-from .decode import register_decode
-from .vad import register_vad
+from .batch import register_batch
+from .bench import register_bench
 from .condense import register_condense
+from .daemon import register_daemon
+from .decode import register_decode
+from .deps import register_deps
 from .record import register_record
 from .refine import register_refine
-from .deps import register_deps
-from .bench import register_bench
-from .daemon import register_daemon
+from .vad import register_vad
 
 __all__ = [
-    "register_decode",
-    "register_vad",
+    "register_batch",
+    "register_bench",
     "register_condense",
+    "register_daemon",
+    "register_decode",
+    "register_deps",
     "register_record",
     "register_refine",
-    "register_deps",
-    "register_bench",
-    "register_daemon",
+    "register_vad",
 ]

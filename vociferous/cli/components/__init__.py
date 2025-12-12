@@ -4,14 +4,14 @@ These components provide file-path/file-IO wrappers around audio primitives,
 designed for use in CLI workflows and interface adapters.
 """
 
-from .decoder import DecoderComponent
-from .vad import VADComponent
 from .condenser import CondenserComponent
+from .decoder import DecoderComponent
 from .recorder import RecorderComponent
+from .vad import VADComponent
 
 __all__ = [
-    "DecoderComponent",
-    "VADComponent",
     "CondenserComponent",
+    "DecoderComponent",
     "RecorderComponent",
+    "VADComponent",
 ]

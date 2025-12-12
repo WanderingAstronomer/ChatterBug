@@ -1,9 +1,5 @@
 """Tests for first-run setup module."""
 
-import os
-import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 
 class TestFirstRunState:
@@ -80,8 +76,8 @@ class TestFirstRunManager:
 
     def test_is_first_run_delegates_to_module_function(self, tmp_path):
         """Manager.is_first_run should use module-level function."""
-        from vociferous.setup.first_run import FirstRunManager, SETUP_MARKER
         from vociferous.setup import first_run
+        from vociferous.setup.first_run import FirstRunManager
         
         marker = tmp_path / ".setup_complete"
         original_marker = first_run.SETUP_MARKER
@@ -125,8 +121,8 @@ class TestFirstRunManager:
 
     def test_run_first_time_setup_with_skips(self, tmp_path):
         """Setup should complete with all steps skipped."""
-        from vociferous.setup.first_run import FirstRunManager
         from vociferous.setup import first_run
+        from vociferous.setup.first_run import FirstRunManager
         
         cache_dir = tmp_path / "cache"
         marker = cache_dir / ".setup_complete"
@@ -157,8 +153,8 @@ class TestEnsureSetupComplete:
 
     def test_skips_when_already_complete(self, tmp_path):
         """Should skip setup when marker exists and skip_if_complete=True."""
-        from vociferous.setup.first_run import ensure_setup_complete
         from vociferous.setup import first_run
+        from vociferous.setup.first_run import ensure_setup_complete
         
         marker = tmp_path / ".setup_complete"
         marker.touch()
@@ -174,8 +170,8 @@ class TestEnsureSetupComplete:
 
     def test_runs_setup_when_not_complete(self, tmp_path):
         """Should run setup when marker doesn't exist."""
-        from vociferous.setup.first_run import ensure_setup_complete
         from vociferous.setup import first_run
+        from vociferous.setup.first_run import ensure_setup_complete
         
         cache_dir = tmp_path / "cache"
         marker = cache_dir / ".setup_complete"

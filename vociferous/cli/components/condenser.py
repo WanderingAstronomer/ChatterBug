@@ -22,7 +22,7 @@ class CondenserComponent:
         audio_path: Path | str,
         *,
         output_path: Path | None = None,
-        segmentation_profile: "SegmentationProfile | None" = None,
+        segmentation_profile: SegmentationProfile | None = None,
         # Legacy parameters (deprecated, use profile instead)
         margin_ms: int | None = None,
         max_duration_s: float | None = None,
@@ -44,7 +44,7 @@ class CondenserComponent:
         """
         timestamps_path = Path(timestamps_path)
         audio_path = Path(audio_path)
-        with open(timestamps_path, "r") as f:
+        with open(timestamps_path) as f:
             timestamps = json.load(f)
 
         output_dir = output_path.parent if output_path else None

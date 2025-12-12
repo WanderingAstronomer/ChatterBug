@@ -1,3 +1,5 @@
+import pytest
+
 from vociferous.domain import TranscriptSegment
 
 
@@ -22,7 +24,7 @@ def test_transcript_segment_validation() -> None:
     except ValueError as exc:
         assert "greater than or equal" in str(exc)
     else:  # pragma: no cover - sanity guard
-        assert False, "Expected ValueError for end before start"
+        pytest.fail("Expected ValueError for end before start")
 
 
 def test_transcript_segment_with_refined_returns_new_instance() -> None:

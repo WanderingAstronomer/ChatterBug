@@ -4,9 +4,9 @@ Extracted from main.py to reduce monolithic script size and improve testability.
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
 
 from vociferous.config.schema import AppConfig
 from vociferous.domain import EngineConfig, TranscriptSink

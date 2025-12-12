@@ -5,8 +5,9 @@ without Qwen's <think> blocks or other artifacts.
 """
 
 import os
-import pytest
 import re
+
+import pytest
 
 
 class TestRefinementExtraction:
@@ -202,8 +203,8 @@ class TestRefinementQualityPatterns:
         # This test is marked as skippable if engine not available
         pytest.importorskip("nemo.collections.speechlm2.models")
         
-        from vociferous.engines.canary_qwen import CanaryQwenEngine
         from vociferous.domain.model import EngineConfig
+        from vociferous.engines.canary_qwen import CanaryQwenEngine
         
         # Use fp16 which is in the allowed list
         config = EngineConfig(device="cuda", compute_type="fp16")

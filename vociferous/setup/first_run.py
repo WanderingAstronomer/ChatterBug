@@ -17,8 +17,8 @@ import shutil
 import sys
 import threading
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -119,12 +119,12 @@ class FirstRunManager:
         from rich.console import Console
         from rich.panel import Panel
         from rich.progress import (
+            BarColumn,
             Progress,
             SpinnerColumn,
-            TextColumn,
-            BarColumn,
-            TimeElapsedColumn,
             TaskProgressColumn,
+            TextColumn,
+            TimeElapsedColumn,
         )
 
         console = Console()
@@ -276,7 +276,7 @@ class FirstRunManager:
                 self._check_dependencies()
             elif step_id == "model":
                 self._download_model_with_progress(
-                    lambda c, t: on_progress(step_id, c, t) if on_progress else None
+                    (lambda c, t, step=step_id: on_progress(step, c, t) if on_progress else None)
                 )
             elif step_id == "gpu":
                 self._check_gpu()
@@ -338,12 +338,12 @@ class FirstRunManager:
         Uses huggingface_hub with progress callbacks.
         """
         try:
-            from huggingface_hub import snapshot_download, HfFileSystem
-        except ImportError:
+            from huggingface_hub import snapshot_download
+        except ImportError as exc:
             raise ImportError(
                 "huggingface_hub is required for model download. "
                 "Install it with: pip install huggingface_hub"
-            )
+            ) from exc
 
         cache_dir = self.cache_dir / "models"
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -380,8 +380,8 @@ class FirstRunManager:
         logger.info("Warming up Canary-Qwen model...")
 
         try:
-            from vociferous.engines.factory import build_engine
             from vociferous.domain.model import EngineConfig, EngineKind
+            from vociferous.engines.factory import build_engine
 
             config = EngineConfig(
                 device="auto",

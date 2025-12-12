@@ -3,51 +3,80 @@ from __future__ import annotations
 import json
 import wave
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from vociferous.cli.components import CondenserComponent
-from vociferous.domain.exceptions import AudioDecodeError, AudioProcessingError, UnsplittableSegmentError
+from vociferous.domain.exceptions import (
+    AudioDecodeError,
+    AudioProcessingError,
+    UnsplittableSegmentError,
+)
 
 
 def register_condense(app: typer.Typer) -> None:
     @app.command("condense", rich_help_panel="Audio Components")
     def condense_cmd(
-        timestamps_json: Path = typer.Argument(..., metavar="TIMESTAMPS.json", help="Speech timestamps JSON"),
-        audio: Path = typer.Argument(..., metavar="AUDIO.wav", help="Standardized WAV to condense"),
-        output: Path | None = typer.Option(
-            None,
-            "--output",
-            "-o",
-            metavar="PATH",
-            help="Optional output path (default: <audio>_condensed.wav). Disables multi-chunk splitting.",
-        ),
+        timestamps_json: Annotated[
+            Path,
+            typer.Argument(..., metavar="TIMESTAMPS.json", help="Speech timestamps JSON"),
+        ],
+        audio: Annotated[
+            Path,
+            typer.Argument(..., metavar="AUDIO.wav", help="Standardized WAV to condense"),
+        ],
+        output: Annotated[
+            Path | None,
+            typer.Option(
+                None,
+                "--output",
+                "-o",
+                metavar="PATH",
+                help="Optional output path (default: <audio>_condensed.wav). Disables multi-chunk splitting.",
+            ),
+        ] = None,
         # New intelligent chunking parameters
-        max_chunk_s: float = typer.Option(
-            60.0,
-            "--max-chunk-s",
-            help="Hard ceiling for chunk duration (default: 60s for Canary)",
-        ),
-        search_start_s: float = typer.Option(
-            30.0,
-            "--search-start-s",
-            help="When to start looking for split points (seconds)",
-        ),
-        min_gap_s: float = typer.Option(
-            3.0,
-            "--min-gap-s",
-            help="Minimum silence gap for natural splits (seconds)",
-        ),
-        margin_ms: int = typer.Option(
-            300,
-            "--margin-ms",
-            help="Silence margin at chunk edges (milliseconds)",
-        ),
-        max_intra_gap_ms: int = typer.Option(
-            800,
-            "--max-intra-gap-ms",
-            help="Maximum preserved gap inside chunks (milliseconds)",
-        ),
+        max_chunk_s: Annotated[
+            float,
+            typer.Option(
+                60.0,
+                "--max-chunk-s",
+                help="Hard ceiling for chunk duration (default: 60s for Canary)",
+            ),
+        ] = 60.0,
+        search_start_s: Annotated[
+            float,
+            typer.Option(
+                30.0,
+                "--search-start-s",
+                help="When to start looking for split points (seconds)",
+            ),
+        ] = 30.0,
+        min_gap_s: Annotated[
+            float,
+            typer.Option(
+                3.0,
+                "--min-gap-s",
+                help="Minimum silence gap for natural splits (seconds)",
+            ),
+        ] = 3.0,
+        margin_ms: Annotated[
+            int,
+            typer.Option(
+                300,
+                "--margin-ms",
+                help="Silence margin at chunk edges (milliseconds)",
+            ),
+        ] = 300,
+        max_intra_gap_ms: Annotated[
+            int,
+            typer.Option(
+                800,
+                "--max-intra-gap-ms",
+                help="Maximum preserved gap inside chunks (milliseconds)",
+            ),
+        ] = 800,
     ) -> None:
         """Condense audio with intelligent chunking that respects engine duration limits.
         
@@ -64,7 +93,7 @@ def register_condense(app: typer.Typer) -> None:
             typer.echo(f"Error: audio file not found: {audio}", err=True)
             raise typer.Exit(code=2)
 
-        with open(timestamps_json, "r") as f:
+        with open(timestamps_json) as f:
             timestamps = json.load(f)
 
         typer.echo(f"Condensing {audio} using {timestamps_json}...")

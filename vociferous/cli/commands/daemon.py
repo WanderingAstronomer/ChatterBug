@@ -20,10 +20,9 @@ import sys
 import time
 from pathlib import Path
 
+import requests
 import typer
 from rich.console import Console
-
-import requests
 
 console = Console()
 
@@ -225,7 +224,7 @@ def register_daemon(app: typer.Typer) -> None:
 
         except PermissionError:
             console.print(f"[red]✗ Permission denied to stop PID {pid}[/red]")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from None
 
     @daemon_app.command("status")
     def status_cmd() -> None:
@@ -297,7 +296,7 @@ def register_daemon(app: typer.Typer) -> None:
                 # 'tail' not available (Windows?)
                 console.print("[red]'tail' command not found[/red]")
                 console.print("Use --lines instead of --follow")
-                raise typer.Exit(1)
+                raise typer.Exit(1) from None
         else:
             # Show last N lines
             try:
@@ -322,4 +321,3 @@ def register_daemon(app: typer.Typer) -> None:
         start_cmd(detach=True, port=DAEMON_PORT)
 
     app.add_typer(daemon_app, name="daemon")
-

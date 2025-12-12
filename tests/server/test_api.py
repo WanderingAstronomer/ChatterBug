@@ -11,7 +11,6 @@ Note: For real end-to-end daemon tests, see test_daemon_integration.py
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 
 
 class TestProtocolModels:
@@ -35,8 +34,9 @@ class TestProtocolModels:
 
     def test_refine_request_empty_text_invalid(self) -> None:
         """Test RefineRequest rejects empty text."""
-        from vociferous.server.api import RefineRequest
         from pydantic import ValidationError
+
+        from vociferous.server.api import RefineRequest
         
         with pytest.raises(ValidationError):
             RefineRequest(text="")
@@ -51,8 +51,9 @@ class TestProtocolModels:
 
     def test_batch_transcribe_request_empty_paths_invalid(self) -> None:
         """Test BatchTranscribeRequest rejects empty paths list."""
-        from vociferous.server.api import BatchTranscribeRequest
         from pydantic import ValidationError
+
+        from vociferous.server.api import BatchTranscribeRequest
         
         with pytest.raises(ValidationError):
             BatchTranscribeRequest(audio_paths=[])
@@ -74,7 +75,7 @@ class TestProtocolModels:
 
     def test_transcribe_response_model(self) -> None:
         """Test TranscribeResponse structure."""
-        from vociferous.server.api import TranscribeResponse, SegmentResponse
+        from vociferous.server.api import SegmentResponse, TranscribeResponse
         
         response = TranscribeResponse(
             success=True,
@@ -108,8 +109,8 @@ class TestSegmentConversion:
 
     def test_segment_to_response(self) -> None:
         """Test _segment_to_response converts domain objects."""
-        from vociferous.server.api import _segment_to_response
         from vociferous.domain.model import TranscriptSegment
+        from vociferous.server.api import _segment_to_response
         
         segment = TranscriptSegment(
             start=1.5,

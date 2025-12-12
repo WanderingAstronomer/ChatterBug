@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import wave
 from datetime import datetime
 from pathlib import Path
 from threading import Event
-import wave
 
 from vociferous.audio.recorder import SoundDeviceRecorder
 from vociferous.domain.exceptions import DependencyError

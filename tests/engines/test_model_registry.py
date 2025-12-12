@@ -9,9 +9,9 @@ from __future__ import annotations
 import pytest
 
 from vociferous.engines.model_registry import (
-    normalize_model_name,
     DEFAULT_CANARY_MODEL,
     DEFAULT_WHISPER_MODEL,
+    normalize_model_name,
 )
 
 

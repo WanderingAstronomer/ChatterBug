@@ -20,35 +20,41 @@ Programmatic usage:
 """
 
 from vociferous.server.client import (
+    CACHE_DIR,
+    DEFAULT_DAEMON_HOST,
+    DEFAULT_DAEMON_PORT,
+    PID_FILE,
     DaemonClient,
     DaemonError,
     DaemonNotRunningError,
     DaemonTimeoutError,
-    is_daemon_running,
-    get_daemon_pid,
-    transcribe_via_daemon,
-    refine_via_daemon,
     batch_transcribe_via_daemon,
-    DEFAULT_DAEMON_HOST,
-    DEFAULT_DAEMON_PORT,
-    PID_FILE,
-    CACHE_DIR,
+    get_daemon_pid,
+    is_daemon_running,
+    refine_via_daemon,
+    transcribe_via_daemon,
+)
+from vociferous.server.manager import (
+    DaemonManager,
+    DaemonStartError,
+    ensure_daemon_running,
 )
 
 __all__ = [
-    # Client
-    "DaemonClient",
-    "DaemonError",
-    "DaemonNotRunningError",
-    "DaemonTimeoutError",
-    "is_daemon_running",
-    "get_daemon_pid",
-    "transcribe_via_daemon",
-    "refine_via_daemon",
-    "batch_transcribe_via_daemon",
-    # Constants
+    "CACHE_DIR",
     "DEFAULT_DAEMON_HOST",
     "DEFAULT_DAEMON_PORT",
     "PID_FILE",
-    "CACHE_DIR",
+    "DaemonClient",
+    "DaemonError",
+    "DaemonManager",
+    "DaemonNotRunningError",
+    "DaemonStartError",
+    "DaemonTimeoutError",
+    "batch_transcribe_via_daemon",
+    "ensure_daemon_running",
+    "get_daemon_pid",
+    "is_daemon_running",
+    "refine_via_daemon",
+    "transcribe_via_daemon",
 ]

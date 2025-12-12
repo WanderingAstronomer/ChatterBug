@@ -8,6 +8,7 @@ Tests will be skipped if GPU memory is insufficient.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -19,15 +20,12 @@ pytest.importorskip(
 if not torch.cuda.is_available():  # pragma: no cover - hardware guard
     pytest.skip("Canary tests require CUDA GPU", allow_module_level=True)
 
-from vociferous.domain.model import EngineConfig, TranscriptionOptions
-from vociferous.engines.canary_qwen import CanaryQwenEngine
+if TYPE_CHECKING:
+    from vociferous.engines.canary_qwen import CanaryQwenEngine
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "audio" / "sample_audio"
 SAMPLE_WAV = SAMPLES_DIR / "ASR_Test_preprocessed.wav"  # Preprocessed: decoded → VAD → condensed
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
-
-# Skip all Canary tests if insufficient GPU memory
-# pytestmark = pytest.mark.skip(reason="Canary tests require GPU with ~3GB+ free VRAM. Run manually on GPU systems with sufficient memory.")
 
 
 @pytest.fixture(autouse=True)
@@ -37,15 +35,21 @@ def ensure_artifacts_dir() -> None:
 
 @pytest.fixture
 def canary_engine() -> CanaryQwenEngine:
+    from vociferous.domain.model import EngineConfig
+    from vociferous.engines.canary_qwen import CanaryQwenEngine
+
     config = EngineConfig(
         model_name="nvidia/canary-qwen-2.5b",
         device="cuda",  # Canary requires CUDA
         compute_type="float16",
     )
+
     return CanaryQwenEngine(config)
 
 
 def test_canary_asr_mode(canary_engine: CanaryQwenEngine) -> None:
+    from vociferous.domain.model import TranscriptionOptions
+
     options = TranscriptionOptions(language="en")
 
     segments = canary_engine.transcribe_file(SAMPLE_WAV, options)
@@ -70,6 +74,8 @@ def test_canary_refine_mode(canary_engine: CanaryQwenEngine) -> None:
 
 
 def test_canary_dual_pass_integration(canary_engine: CanaryQwenEngine) -> None:
+    from vociferous.domain.model import TranscriptionOptions
+
     options = TranscriptionOptions(language="en")
 
     segments = canary_engine.transcribe_file(SAMPLE_WAV, options)

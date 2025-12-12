@@ -1,13 +1,13 @@
 """ASR engine adapters implementing the domain TranscriptionEngine Protocol."""
 
-from .factory import EngineBuilder, build_engine  # noqa: F401
-from .canary_qwen import CanaryQwenEngine  # noqa: F401
-from .whisper_turbo import WhisperTurboEngine  # noqa: F401
+from .canary_qwen import CanaryQwenEngine
+from .factory import EngineBuilder, build_engine
+from .whisper_turbo import WhisperTurboEngine
 
 __all__ = [
-    "EngineBuilder",
-    "build_engine",
     "CanaryQwenEngine",
+    "EngineBuilder",
     "WhisperTurboEngine",
+    "build_engine",
 ]
 

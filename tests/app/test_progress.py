@@ -1,11 +1,9 @@
 """Tests for progress tracking module."""
 
-import pytest
 from vociferous.app.progress import (
-    ProgressTracker,
     NullProgressTracker,
-    SimpleProgressTracker,
     RichProgressTracker,
+    SimpleProgressTracker,
     TranscriptionProgress,
     transcription_progress,
 )

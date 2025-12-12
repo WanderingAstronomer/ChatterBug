@@ -7,7 +7,6 @@ from pathlib import Path
 
 import pytest
 
-
 SAMPLE_AUDIO_DIR = Path(__file__).parent.parent / "audio" / "sample_audio"
 ARTIFACTS_DIR = Path(__file__).parent / "artifacts"
 

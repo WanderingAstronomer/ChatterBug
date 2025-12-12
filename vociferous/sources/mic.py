@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from pathlib import Path
-from threading import Event
 import tempfile
 import wave
+from pathlib import Path
+from threading import Event
 
 from vociferous.audio.recorder import MicrophoneRecorder, SoundDeviceRecorder
 from vociferous.domain.exceptions import DependencyError

@@ -1,17 +1,26 @@
 """Application-layer orchestration."""
 
 import logging
+
 import structlog
 
-from .workflow import transcribe_file_workflow, transcribe_workflow  # noqa: F401
-from .progress import (  # noqa: F401
-    TranscriptionProgress,
+from .batch import (
+    BatchResult,
+    BatchStats,
+    BatchTranscriptionRunner,
+    compute_batch_stats,
+    generate_combined_transcript,
+)
+from .progress import (
+    NullProgressTracker,
     ProgressTracker,
     RichProgressTracker,
     SimpleProgressTracker,
-    NullProgressTracker,
+    TranscriptionProgress,
     transcription_progress,
 )
+from .workflow import transcribe_file_workflow, transcribe_workflow
+
 
 def configure_logging() -> None:
     logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -29,14 +38,19 @@ def configure_logging() -> None:
     )
 
 __all__ = [
-    "transcribe_workflow",
-    "transcribe_file_workflow",
-    "configure_logging",
-    "TranscriptionProgress",
+    "BatchResult",
+    "BatchStats",
+    "BatchTranscriptionRunner",
+    "NullProgressTracker",
     "ProgressTracker",
     "RichProgressTracker",
-    "SimpleProgressTracker", 
-    "NullProgressTracker",
+    "SimpleProgressTracker",
+    "TranscriptionProgress",
+    "compute_batch_stats",
+    "configure_logging",
+    "generate_combined_transcript",
+    "transcribe_file_workflow",
+    "transcribe_workflow",
     "transcription_progress",
 ]
 

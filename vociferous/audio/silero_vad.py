@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from vociferous.domain.exceptions import DependencyError
+
 from .vad import HAS_SILERO, VadWrapper
 
 if TYPE_CHECKING:
@@ -197,7 +198,7 @@ class SileroVAD:
             return None
         
         try:
-            with open(cache_path, 'r') as f:
+            with open(cache_path) as f:
                 return json.load(f)
-        except (json.JSONDecodeError, IOError):
+        except (OSError, json.JSONDecodeError):
             return None

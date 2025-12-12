@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
-
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.screenmanager import Screen
-from kivymd.uix.button import MDRaisedButton, MDFlatButton
-from kivymd.uix.label import MDLabel
-from kivymd.uix.card import MDCard
-from kivymd.uix.progressbar import MDProgressBar
 
 import structlog
+from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.screenmanager import Screen
+from kivymd.uix.button import MDRaisedButton
+from kivymd.uix.card import MDCard
+from kivymd.uix.label import MDLabel
+from kivymd.uix.progressbar import MDProgressBar
 
 from .installer import DependencyInstaller, InstallMode
 
@@ -186,8 +185,9 @@ class SplashScreen(Screen):
         self.status_label.text = f"[size=14]Installing {mode.value.upper()} dependencies...[/size]"
         
         # Start installation in background thread
-        from kivy.clock import Clock
         import threading
+
+        from kivy.clock import Clock
         
         def install_thread():
             """Run installation in background."""

@@ -1,44 +1,47 @@
 from __future__ import annotations
 
-from pathlib import Path
 import logging
 import os
 import shutil
 import sys
+from pathlib import Path
+from typing import Annotated
 
 from vociferous.app import configure_logging, transcribe_file_workflow
-from vociferous.app.workflow import EngineWorker
-from vociferous.app.sinks import RefiningSink
 from vociferous.app.progress import TranscriptionProgress
-from vociferous.config import load_config, get_segmentation_profile
-from vociferous.config.languages import WHISPER_LANGUAGES
-from vociferous.domain.model import EngineKind, EngineProfile
-from vociferous.domain.exceptions import (
-    DependencyError, EngineError, AudioDecodeError, ConfigurationError
-)
-from vociferous.engines.factory import build_engine
-from vociferous.refinement.factory import build_refiner
-from vociferous.cli.helpers import build_sink, build_transcribe_configs_from_cli
-from vociferous.sources import FileSource
+from vociferous.app.sinks import RefiningSink
 from vociferous.cli.commands import (
-    register_decode,
-    register_vad,
+    register_batch,
+    register_bench,
     register_condense,
+    register_daemon,
+    register_decode,
+    register_deps,
     register_record,
     register_refine,
-    register_deps,
-    register_bench,
-    register_daemon,
+    register_vad,
 )
+from vociferous.cli.helpers import build_sink, build_transcribe_configs_from_cli
+from vociferous.config import get_segmentation_profile, load_config
+from vociferous.config.languages import WHISPER_LANGUAGES
+from vociferous.domain.exceptions import (
+    AudioDecodeError,
+    ConfigurationError,
+    DependencyError,
+    EngineError,
+)
+from vociferous.domain.model import EngineKind, EngineProfile
+from vociferous.refinement.factory import build_refiner
+from vociferous.sources import FileSource
 
 try:
+    import click
     import typer
-    from typer.core import TyperGroup
     from rich.console import Console
     from rich.panel import Panel
     from rich.table import Table
     from rich.theme import Theme
-    import click
+    from typer.core import TyperGroup
 except ImportError as exc:  # pragma: no cover - tooling dependency guard
     raise DependencyError("typer and rich are required for the CLI") from exc
 
@@ -225,6 +228,7 @@ register_refine(app)        # rich_help_panel="Refinement Components"
 register_deps(app)          # rich_help_panel="Utilities"
 register_bench(app)         # rich_help_panel="Utilities"
 register_daemon(app)        # rich_help_panel="Performance"
+register_batch(app)         # rich_help_panel="Batch Processing"
 
 # User-tier commands are defined below: transcribe, languages, check
 
@@ -284,53 +288,71 @@ def main_callback(
 
 @app.command(rich_help_panel="Core Commands")
 def transcribe(
-    file: Path = typer.Argument(..., metavar="FILE", help="Audio file to transcribe"),
-    engine: EngineKind = typer.Option(
-        "canary_qwen",
-        "--engine",
-        "-e",
-        rich_help_panel="Core Options",
-        help=(
-            "Transcription engine to use. "
-            "'canary_qwen' (GPU-optimized, default) or 'whisper_turbo' (CPU-friendly fallback)."
+    file: Annotated[Path, typer.Argument(..., metavar="FILE", help="Audio file to transcribe")],
+    engine: Annotated[
+        EngineKind,
+        typer.Option(
+            "canary_qwen",
+            "--engine",
+            "-e",
+            rich_help_panel="Core Options",
+            help=(
+                "Transcription engine to use. "
+                "'canary_qwen' (GPU-optimized, default) or 'whisper_turbo' (CPU-friendly fallback)."
+            ),
         ),
-    ),
-    language: str = typer.Option(
-        "en",
-        "--language",
-        "-l",
-        rich_help_panel="Core Options",
-        help="Language code (ISO 639-1, e.g., 'en', 'es', 'fr') or 'auto' for detection.",
-    ),
-    output: Path | None = typer.Option(
-        None,
-        "--output",
-        "-o",
-        metavar="PATH",
-        rich_help_panel="Core Options",
-        help="Save transcript to file (default: stdout)",
-    ),
-    keep_intermediates: bool | None = typer.Option(
-        None,
-        "--keep-intermediates/--no-keep-intermediates",
-        help="Keep decoded/vad/condensed files (default follows config).",
-        rich_help_panel="Core Options",
-        show_default=False,
-    ),
-    refine: bool | None = typer.Option(
-        None,
-        "--refine/--no-refine",
-        help="Enable or disable second-pass refinement when the engine supports it.",
-        show_default=False,
-        rich_help_panel="Core Options",
-    ),
-    refine_instructions: str | None = typer.Option(
-        None,
-        "--refine-instructions",
-        help="Custom refinement instructions (engines that support dual-pass).",
-        show_default=False,
-        rich_help_panel="Core Options",
-    ),
+    ] = "canary_qwen",
+    language: Annotated[
+        str,
+        typer.Option(
+            "en",
+            "--language",
+            "-l",
+            rich_help_panel="Core Options",
+            help="Language code (ISO 639-1, e.g., 'en', 'es', 'fr') or 'auto' for detection.",
+        ),
+    ] = "en",
+    output: Annotated[
+        Path | None,
+        typer.Option(
+            None,
+            "--output",
+            "-o",
+            metavar="PATH",
+            rich_help_panel="Core Options",
+            help="Save transcript to file (default: stdout)",
+        ),
+    ] = None,
+    keep_intermediates: Annotated[
+        bool | None,
+        typer.Option(
+            None,
+            "--keep-intermediates/--no-keep-intermediates",
+            help="Keep decoded/vad/condensed files (default follows config).",
+            rich_help_panel="Core Options",
+            show_default=False,
+        ),
+    ] = None,
+    refine: Annotated[
+        bool | None,
+        typer.Option(
+            None,
+            "--refine/--no-refine",
+            help="Enable or disable second-pass refinement when the engine supports it.",
+            show_default=False,
+            rich_help_panel="Core Options",
+        ),
+    ] = None,
+    refine_instructions: Annotated[
+        str | None,
+        typer.Option(
+            None,
+            "--refine-instructions",
+            help="Custom refinement instructions (engines that support dual-pass).",
+            show_default=False,
+            rich_help_panel="Core Options",
+        ),
+    ] = None,
 ) -> None:
     """Transcribe an audio file to text using local ASR engines.
 
@@ -428,7 +450,7 @@ def transcribe(
     # Check for first-run setup (only for Canary-Qwen which requires model download)
     if engine == "canary_qwen":
         try:
-            from vociferous.setup import is_first_run, FirstRunManager
+            from vociferous.setup import FirstRunManager, is_first_run
             if is_first_run():
                 manager = FirstRunManager()
                 manager.run_first_time_setup()
@@ -645,14 +667,25 @@ def languages() -> None:
 
 
 def main() -> None:
-    """CLI entrypoint for Vociferous."""
+    """CLI entrypoint for Vociferous with rich error handling."""
+    from vociferous.domain.exceptions import VociferousError
+
     try:
         app()
-    except KeyboardInterrupt:
-        typer.echo("\nInterrupted by user.", err=True)
-        raise typer.Exit(code=130)
+    except KeyboardInterrupt as exc:
+        console.print("\n⚠️  Operation cancelled by user", style="yellow")
+        raise typer.Exit(code=130) from exc
+    except VociferousError as e:
+        # Rich formatted error with context and suggestions
+        console.print(e.format_rich())
+        raise typer.Exit(code=1) from e
     except Exception as exc:
-        typer.echo(f"Fatal error: {exc}", err=True)
+        # Unexpected error - show full traceback in verbose mode
+        if os.getenv("VOCIFEROUS_VERBOSE") or os.getenv("VOCIFEROUS_DEBUG"):
+            console.print_exception()
+        else:
+            console.print(f"[red]✗ Unexpected error: {exc}[/red]")
+            console.print("[dim]Run with VOCIFEROUS_VERBOSE=1 for full traceback[/dim]")
         raise typer.Exit(code=1) from exc
 
 

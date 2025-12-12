@@ -12,7 +12,6 @@ to validate:
 from __future__ import annotations
 
 import pytest
-from pathlib import Path
 
 from vociferous.audio.ffmpeg_condenser import FFmpegCondenser
 from vociferous.domain.exceptions import UnsplittableSegmentError
@@ -366,8 +365,10 @@ class TestEdgeCases:
                 max_intra_gap_s=0.8, boundary_margin_s=0.3,
             )
         
-        assert "Single speech segment" in str(exc_info.value)
-        assert "cannot be split" in str(exc_info.value)
+        # New rich error format
+        assert "is too long" in str(exc_info.value)
+        assert "62.0s" in str(exc_info.value)
+        assert "60.0s" in str(exc_info.value)
     
     def test_two_segments_both_under_limit_together(self, condenser: FFmpegCondenser) -> None:
         """Two segments that together are under limit should not split."""

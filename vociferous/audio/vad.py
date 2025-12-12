@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import numpy as np
+from collections.abc import Callable, Sequence
 from types import ModuleType
-from typing import Any, Callable, Protocol, Sequence, TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
+
+import numpy as np
 
 from vociferous.domain.exceptions import ConfigurationError
 

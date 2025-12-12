@@ -3,21 +3,21 @@
 from __future__ import annotations
 
 from pathlib import Path
-
-from kivy.core.window import Window
-from kivy.uix.screenmanager import ScreenManager, Screen, NoTransition
-from kivymd.app import MDApp
-from kivymd.uix.navigationdrawer import MDNavigationLayout, MDNavigationDrawer
-from kivymd.uix.toolbar import MDTopAppBar
-from kivymd.uix.list import OneLineIconListItem, IconLeftWidget
-from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.snackbar import MDSnackbar
+from typing import Any
 
 import structlog
+from kivy.core.window import Window
+from kivy.uix.screenmanager import NoTransition, Screen, ScreenManager
+from kivymd.app import MDApp
+from kivymd.uix.boxlayout import MDBoxLayout
+from kivymd.uix.list import IconLeftWidget, OneLineIconListItem
+from kivymd.uix.navigationdrawer import MDNavigationDrawer, MDNavigationLayout
+from kivymd.uix.snackbar import MDSnackbar
+from kivymd.uix.toolbar import MDTopAppBar
 
-from .splash import SplashScreen
-from .screens import HomeScreen, SettingsScreen
 from .installer import InstallMode
+from .screens import HomeScreen, SettingsScreen
+from .splash import SplashScreen
 
 logger = structlog.get_logger(__name__)
 
@@ -132,9 +132,10 @@ class VociferousGUIApp(MDApp):
         ]
         
         for icon, text in nav_items:
+            dest_name = text.lower()
             item = OneLineIconListItem(
                 text=text,
-                on_release=lambda x, name=text.lower(): self._navigate_to(name)
+                on_release=lambda _x, name=dest_name: self._navigate_to(name)
             )
             item.add_widget(IconLeftWidget(icon=icon))
             nav_drawer_content.add_widget(item)

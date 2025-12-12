@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Literal, Mapping, Protocol, Sequence, runtime_checkable
+from typing import Literal, Protocol, runtime_checkable
 from uuid import uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from .constants import Device, ComputeType
+from .constants import ComputeType, Device
 
 DEFAULT_MODEL_CACHE_DIR = Path.home() / ".cache" / "vociferous" / "models"
 DEFAULT_WHISPER_MODEL = "turbo"  # Official OpenAI Whisper Turbo
@@ -138,7 +139,7 @@ class TranscriptSegment:
     def end_s(self) -> float:
         return self.end
 
-    def with_refined(self, refined_text: str) -> "TranscriptSegment":
+    def with_refined(self, refined_text: str) -> TranscriptSegment:
         """Return a copy with `refined_text` set; leaves other fields unchanged."""
         return replace(self, refined_text=refined_text)
 

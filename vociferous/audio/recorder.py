@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from collections.abc import Iterable
 from threading import Event
-from typing import Any, Iterable, Protocol
+from typing import Any, Protocol
 
 from vociferous.domain.exceptions import ConfigurationError, DependencyError
 
@@ -60,7 +61,7 @@ class SoundDeviceRecorder:
             )
 
         bytes_per_frame = actual_sample_width * channels
-        q: "queue.SimpleQueue[bytes]" = queue.SimpleQueue()
+        q: queue.SimpleQueue[bytes] = queue.SimpleQueue()
 
         def callback(indata: Any, frames: Any, time_info: Any, status: Any) -> None:
             if status:  # underflow/overflow/etc.

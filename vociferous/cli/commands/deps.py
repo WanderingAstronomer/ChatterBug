@@ -7,9 +7,7 @@ engine dependencies and model weights, following the fail-loud principle.
 from __future__ import annotations
 
 import importlib
-import sys
 from pathlib import Path
-from typing import Any
 
 import typer
 from rich.console import Console
@@ -17,7 +15,6 @@ from rich.panel import Panel
 from rich.table import Table
 
 from vociferous.config import load_config
-from vociferous.domain.model import EngineKind
 
 console = Console()
 
@@ -55,8 +52,7 @@ def _check_package_installed(package_name: str) -> tuple[bool, str | None]:
         version = getattr(mod, "__version__", "unknown")
         return True, version
     except (ImportError, OSError, RuntimeError):
-        # ImportError: not installed
-        # OSError/RuntimeError: installed but broken (e.g., missing shared libraries)
+        # Treat missing or broken imports as not installed.
         return False, None
 
 

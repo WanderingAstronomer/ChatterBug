@@ -5,31 +5,25 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from kivy.uix.screenmanager import Screen
-from kivy.uix.boxlayout import BoxLayout
-from kivy.uix.popup import Popup
+import structlog
 from kivy.core.window import Window
-from kivymd.uix.label import MDLabel
-from kivymd.uix.button import MDRaisedButton, MDFlatButton
-from kivymd.uix.textfield import MDTextField
-from kivymd.uix.card import MDCard
+from kivy.uix.screenmanager import Screen
 from kivymd.uix.boxlayout import MDBoxLayout
-from kivymd.uix.scrollview import MDScrollView
-from kivymd.uix.list import (
-    OneLineListItem,
-    TwoLineListItem,
-    OneLineAvatarIconListItem,
-    IconLeftWidget,
-)
-from kivymd.uix.selectioncontrol import MDSwitch, MDCheckbox
-from kivymd.uix.menu import MDDropdownMenu
+from kivymd.uix.button import MDRaisedButton
+from kivymd.uix.card import MDCard
 from kivymd.uix.filemanager import MDFileManager
+from kivymd.uix.label import MDLabel
+from kivymd.uix.list import (
+    TwoLineListItem,
+)
+from kivymd.uix.menu import MDDropdownMenu
+from kivymd.uix.scrollview import MDScrollView
+from kivymd.uix.selectioncontrol import MDSwitch
+from kivymd.uix.textfield import MDTextField
 from kivymd.uix.tooltip import MDTooltip
 
-import structlog
+from vociferous.config import load_config, save_config
 
-from vociferous.config import load_config, save_config, AppConfig
-from vociferous.domain.model import EngineKind
 from .transcription import GUITranscriptionManager
 
 logger = structlog.get_logger(__name__)
@@ -359,22 +353,22 @@ class HomeScreen(Screen):
             # Show notification
             app = _get_app()
             if app and hasattr(app, 'show_notification'):
-                app.show_notification(f"Failed to save: {str(e)}")
+                app.show_notification(f"Failed to save: {e!s}")
 
     def _cancel_operation(self) -> None:
         """Cancel the current transcription operation."""
-        if self.transcription_manager and self.transcription_manager.current_task:
-            if self.transcription_manager.current_task.is_running:
-                self.transcription_manager.stop_current()
-                self.status_label.text = f"[color=#{self.COLOR_WARNING}]⚠ Cancelled[/color]"
-                self.transcribe_button.disabled = False
-                
-                # Show notification
-                app = _get_app()
-                if app and hasattr(app, 'show_notification'):
-                    app.show_notification("Transcription cancelled")
-                
-                logger.info("Transcription cancelled by user")
+        current_task = self.transcription_manager.current_task if self.transcription_manager else None
+        if current_task and current_task.is_running:
+            self.transcription_manager.stop_current()
+            self.status_label.text = f"[color=#{self.COLOR_WARNING}]⚠ Cancelled[/color]"
+            self.transcribe_button.disabled = False
+            
+            # Show notification
+            app = _get_app()
+            if app and hasattr(app, 'show_notification'):
+                app.show_notification("Transcription cancelled")
+            
+            logger.info("Transcription cancelled by user")
 
 
 class SettingsScreen(Screen):
@@ -643,7 +637,7 @@ class SettingsScreen(Screen):
             # Show notification
             app = _get_app()
             if app and hasattr(app, 'show_notification'):
-                app.show_notification(f"Failed to save settings: {str(e)}")
+                app.show_notification(f"Failed to save settings: {e!s}")
 
     def _show_theme_menu(self, item: Any) -> None:
         """Show theme selection menu."""
@@ -703,8 +697,7 @@ class SettingsScreen(Screen):
         
         # Extract percentage value with validation
         try:
-            percent = int(size.rstrip('%'))
-            multiplier = percent / 100.0
+            int(size.rstrip('%'))
         except (ValueError, AttributeError) as e:
             logger.error("Invalid font size format", size=size, error=str(e))
             return

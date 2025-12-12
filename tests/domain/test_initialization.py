@@ -8,14 +8,13 @@ from __future__ import annotations
 
 import pytest
 
+from vociferous.config.schema import AppConfig, ArtifactConfig
 from vociferous.domain.model import (
+    DEFAULT_CANARY_MODEL,
     EngineConfig,
     TranscriptionOptions,
-    DEFAULT_CANARY_MODEL,
-    DEFAULT_WHISPER_MODEL,
 )
 from vociferous.refinement.base import RefinerConfig
-from vociferous.config.schema import AppConfig, ArtifactConfig
 
 
 class TestEngineConfig:

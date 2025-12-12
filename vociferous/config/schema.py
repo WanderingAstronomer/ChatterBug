@@ -2,14 +2,14 @@ from __future__ import annotations
 
 import logging
 import sys
-from pathlib import Path
-from typing import Mapping
-
 import tomllib
-import tomli_w
+from collections.abc import Mapping
+from pathlib import Path
 
+import tomli_w
 from pydantic import BaseModel, Field, field_validator, model_validator
 
+from vociferous.config.migrations import migrate_raw_config
 from vociferous.domain.model import (
     DEFAULT_CANARY_MODEL,
     DEFAULT_MODEL_CACHE_DIR,
@@ -20,7 +20,6 @@ from vociferous.domain.model import (
     SegmentationProfile,
     TranscriptionOptions,
 )
-from vociferous.config.migrations import migrate_raw_config
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +161,7 @@ class SegmentationProfileConfig(BaseModel):
         return v
 
     @model_validator(mode="after")
-    def validate_search_start(self) -> "SegmentationProfileConfig":
+    def validate_search_start(self) -> SegmentationProfileConfig:
         """Ensure chunk_search_start_s < max_chunk_s."""
         if self.chunk_search_start_s >= self.max_chunk_s:
             raise ValueError(
@@ -275,7 +274,7 @@ class AppConfig(BaseModel):
 
 
     @model_validator(mode="after")
-    def inject_and_validate_profiles(self) -> "AppConfig":
+    def inject_and_validate_profiles(self) -> AppConfig:
         """Inject default profiles if empty and validate profile references."""
         # Inject defaults if profiles are empty
         if not self.engine_profiles:
@@ -295,7 +294,7 @@ class AppConfig(BaseModel):
         return self
 
     @classmethod
-    def from_dict(cls, data: Mapping[str, object]) -> "AppConfig":
+    def from_dict(cls, data: Mapping[str, object]) -> AppConfig:
         # Pydantic handles validation automatically.
         # We use model_validate to parse the dict.
         return cls.model_validate(data)
@@ -398,7 +397,9 @@ def get_engine_profile(config: AppConfig, name: str | None = None) -> EngineProf
         profile_cfg = config.engine_profiles[profile_name]
     except KeyError:
         available = ", ".join(sorted(config.engine_profiles)) or "<none>"
-        raise KeyError(f"Engine profile '{profile_name}' not found. Available: {available}")
+        raise KeyError(
+            f"Engine profile '{profile_name}' not found. Available: {available}"
+        ) from None
     return profile_cfg.to_profile()
 
 
@@ -410,5 +411,7 @@ def get_segmentation_profile(config: AppConfig, name: str | None = None) -> Segm
         profile_cfg = config.segmentation_profiles[profile_name]
     except KeyError:
         available = ", ".join(sorted(config.segmentation_profiles)) or "<none>"
-        raise KeyError(f"Segmentation profile '{profile_name}' not found. Available: {available}")
+        raise KeyError(
+            f"Segmentation profile '{profile_name}' not found. Available: {available}"
+        ) from None
     return profile_cfg.to_profile()

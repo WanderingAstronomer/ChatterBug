@@ -5,7 +5,6 @@ from __future__ import annotations
 import subprocess
 import sys
 from enum import Enum
-from typing import List
 
 import structlog
 
@@ -70,7 +69,7 @@ class DependencyInstaller:
             return self.install_gpu_dependencies()
         return False
 
-    def _install_packages(self, packages: List[str]) -> bool:
+    def _install_packages(self, packages: list[str]) -> bool:
         """Install a list of packages using pip.
         
         Args:
@@ -80,7 +79,7 @@ class DependencyInstaller:
             True if all packages installed successfully, False otherwise.
         """
         try:
-            cmd = [self.pip_executable, "-m", "pip", "install"] + packages
+            cmd = [self.pip_executable, "-m", "pip", "install", *packages]
             logger.info("Running pip install", command=" ".join(cmd))
             result = subprocess.run(
                 cmd,

@@ -1,19 +1,14 @@
 from __future__ import annotations
 
-from typing import Dict
-
-from vociferous.domain.model import EngineKind
-
-# Canary-Qwen (GPU-only)
 DEFAULT_CANARY_MODEL = "nvidia/canary-qwen-2.5b"
-CANARY_MODELS: Dict[str, str] = {
+CANARY_MODELS: dict[str, str] = {
     DEFAULT_CANARY_MODEL: DEFAULT_CANARY_MODEL,
 }
 
 # Official OpenAI Whisper models (NOT faster-whisper, NOT CTranslate2)
 # See: https://github.com/openai/whisper
 DEFAULT_WHISPER_MODEL = "turbo"
-WHISPER_MODELS: Dict[str, str] = {
+WHISPER_MODELS: dict[str, str] = {
     "turbo": "turbo",           # Whisper Turbo (recommended, fastest)
     "large-v3": "large-v3",     # Whisper V3 Large
     "large-v2": "large-v2",     # Whisper V2 Large
@@ -30,9 +25,7 @@ def _is_invalid_canary_model(name: str, default: str | None) -> bool:
         return True
     if name in CANARY_MODELS or str(name).startswith("nvidia/canary"):
         return False
-    if default and name == default:
-        return False
-    return True
+    return not (default and name == default)
 
 
 def _is_invalid_whisper_model(name: str, default: str | None) -> bool:
@@ -41,9 +34,7 @@ def _is_invalid_whisper_model(name: str, default: str | None) -> bool:
     # Official Whisper model names: turbo, large-v3, large-v2, large, medium, small, base, tiny
     if name in WHISPER_MODELS or str(name).lower() in WHISPER_MODELS:
         return False
-    if default and name == default:
-        return False
-    return True
+    return not (default and name == default)
 
 
 _DEFAULTS = {
@@ -51,7 +42,7 @@ _DEFAULTS = {
     "whisper_turbo": DEFAULT_WHISPER_MODEL,
 }
 
-_ALIASES: Dict[str, Dict[str, str]] = {
+_ALIASES: dict[str, dict[str, str]] = {
     "canary_qwen": {
         "default": DEFAULT_CANARY_MODEL,
     },

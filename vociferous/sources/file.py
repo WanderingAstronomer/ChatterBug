@@ -6,8 +6,8 @@ audio chunks for transcription.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from vociferous.audio.decoder import AudioDecoder, FfmpegDecoder, WavDecoder
 from vociferous.audio.utilities import apply_noise_gate, trim_trailing_silence
@@ -89,7 +89,6 @@ class FileSource(Source):
         
         # Optional noise gate
         if self.noise_gate_db is not None:
-            import math
             gate_linear = 10 ** (self.noise_gate_db / 20.0)
             threshold = max(1, int(32768 * gate_linear))
             pcm = apply_noise_gate(pcm, threshold, audio.sample_width_bytes)

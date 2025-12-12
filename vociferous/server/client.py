@@ -25,8 +25,8 @@ from typing import TYPE_CHECKING, Any
 import requests
 from requests.exceptions import ConnectionError, RequestException, Timeout
 
-from vociferous.domain.model import TranscriptSegment
 from vociferous.domain.exceptions import VociferousError
+from vociferous.domain.model import TranscriptSegment
 
 if TYPE_CHECKING:
     pass
@@ -51,19 +51,49 @@ PID_FILE = CACHE_DIR / "daemon.pid"
 class DaemonError(VociferousError):
     """Base exception for daemon communication errors."""
 
-    pass
+    def __init__(
+        self,
+        message: str = "Daemon error",
+        **kwargs,
+    ) -> None:
+        super().__init__(message, **kwargs)
 
 
 class DaemonNotRunningError(DaemonError):
     """Daemon is not running or unreachable."""
 
-    pass
+    def __init__(
+        self,
+        message: str = "Daemon is not running or unreachable",
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            message,
+            suggestions=[
+                "Start the daemon: vociferous daemon start",
+                "Check if port 8765 is in use: ss -tlnp | grep 8765",
+            ],
+            **kwargs,
+        )
 
 
 class DaemonTimeoutError(DaemonError):
     """Daemon request timed out."""
 
-    pass
+    def __init__(
+        self,
+        message: str = "Daemon request timed out",
+        **kwargs,
+    ) -> None:
+        super().__init__(
+            message,
+            suggestions=[
+                "The request may be taking longer than expected",
+                "Check daemon logs: vociferous daemon logs",
+                "Try restarting the daemon: vociferous daemon restart",
+            ],
+            **kwargs,
+        )
 
 
 # ============================================================================

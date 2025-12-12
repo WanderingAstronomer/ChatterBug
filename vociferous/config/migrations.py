@@ -1,12 +1,12 @@
-from __future__ import annotations
-
 """Configuration migrations kept separate from schema validation.
 
 Handles backward compatibility for old config formats.
 """
 
+from __future__ import annotations
+
 import logging
-from typing import Mapping
+from collections.abc import Mapping
 
 from vociferous.domain.model import DEFAULT_WHISPER_MODEL
 

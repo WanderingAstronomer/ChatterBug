@@ -18,7 +18,7 @@ import tempfile
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import FastAPI, File, HTTPException, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -219,7 +219,7 @@ async def health() -> HealthResponse:
 
 
 @app.post("/transcribe", response_model=TranscribeResponse)
-async def transcribe(audio: UploadFile = File(...)) -> TranscribeResponse:
+async def transcribe(audio: Annotated[UploadFile, File(...)] ) -> TranscribeResponse:
     """Transcribe uploaded audio file.
 
     Accepts audio file via multipart/form-data, saves to temp location,
@@ -252,7 +252,7 @@ async def transcribe(audio: UploadFile = File(...)) -> TranscribeResponse:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Failed to read audio file: {e}",
-        )
+        ) from e
 
     # Transcribe
     try:
@@ -277,7 +277,7 @@ async def transcribe(audio: UploadFile = File(...)) -> TranscribeResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Transcription failed: {e}",
-        )
+        ) from e
 
     finally:
         # Cleanup temp file
@@ -319,7 +319,7 @@ async def refine(request: RefineRequest) -> RefineResponse:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Refinement failed: {e}",
-        )
+        ) from e
 
 
 @app.post("/batch-transcribe", response_model=BatchTranscribeResponse)
@@ -379,7 +379,7 @@ async def batch_transcribe(request: BatchTranscribeRequest) -> BatchTranscribeRe
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Batch transcription failed: {e}",
-        )
+        ) from e
 
 
 # ============================================================================

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import wave
+from contextlib import suppress
 from pathlib import Path
 from threading import Event, Thread
-import wave
+from typing import Annotated
 
 import typer
 
@@ -13,15 +15,18 @@ from vociferous.domain.exceptions import DependencyError
 def register_record(app: typer.Typer) -> None:
     @app.command("record", rich_help_panel="Audio Components")
     def record_cmd(
-        output: Path | None = typer.Option(
-            None,
-            "--output",
-            "-o",
-            metavar="PATH",
-            help="Optional output path (default: ~/.cache/vociferous/recordings/recording_<timestamp>.wav)",
-        ),
-        sample_rate: int = typer.Option(16000, help="Sample rate for capture (Hz)"),
-        device: str | None = typer.Option(None, help="Optional sounddevice input name"),
+        output: Annotated[
+            Path | None,
+            typer.Option(
+                None,
+                "--output",
+                "-o",
+                metavar="PATH",
+                help="Optional output path (default: ~/.cache/vociferous/recordings/recording_<timestamp>.wav)",
+            ),
+        ] = None,
+        sample_rate: Annotated[int, typer.Option(help="Sample rate for capture (Hz)")] = 16000,
+        device: Annotated[str | None, typer.Option(help="Optional sounddevice input name")] = None,
     ) -> None:
         component = RecorderComponent(sample_rate=sample_rate, device_name=device)
         out_path = output or component.default_output_path()
@@ -29,9 +34,9 @@ def register_record(app: typer.Typer) -> None:
         typer.echo("Ready to record. Press ENTER to START recording...")
         try:
             input()
-        except KeyboardInterrupt:
+        except KeyboardInterrupt as exc:
             typer.echo("Cancelled.")
-            raise typer.Exit(code=130)
+            raise typer.Exit(code=130) from exc
 
         typer.echo("🔴 RECORDING... (press ENTER to STOP)")
         stop_event = Event()
@@ -46,10 +51,8 @@ def register_record(app: typer.Typer) -> None:
         thread = Thread(target=worker, daemon=True)
         thread.start()
 
-        try:
+        with suppress(KeyboardInterrupt):
             input()
-        except KeyboardInterrupt:
-            pass
         stop_event.set()
         thread.join()
 

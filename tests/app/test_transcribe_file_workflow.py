@@ -15,9 +15,9 @@ from vociferous.domain.model import (
     EngineMetadata,
     EngineProfile,
     SegmentationProfile,
-    TranscriptSegment,
     TranscriptionEngine,
     TranscriptionOptions,
+    TranscriptSegment,
 )
 from vociferous.sources import FileSource
 

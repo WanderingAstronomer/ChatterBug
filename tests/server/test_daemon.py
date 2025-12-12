@@ -6,11 +6,10 @@ The actual server tests are in test_api.py and test_client.py.
 
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
-from unittest.mock import patch, Mock
+from unittest.mock import Mock, patch
 
-from vociferous.server.client import is_daemon_running, get_daemon_pid
+from vociferous.server.client import get_daemon_pid, is_daemon_running
 
 
 class TestDaemonDetection:
@@ -102,7 +101,7 @@ class TestDefaultPaths:
         assert DEFAULT_TIMEOUT_S == 60.0
 
     def test_pid_file_in_cache(self) -> None:
-        from vociferous.server.client import PID_FILE, CACHE_DIR
+        from vociferous.server.client import CACHE_DIR, PID_FILE
 
         assert PID_FILE.parent == CACHE_DIR
         assert PID_FILE.name == "daemon.pid"
@@ -112,17 +111,17 @@ class TestExceptionHierarchy:
     """Test exception class hierarchy."""
 
     def test_daemon_error_is_vociferous_error(self) -> None:
-        from vociferous.server.client import DaemonError
         from vociferous.domain.exceptions import VociferousError
+        from vociferous.server.client import DaemonError
 
         assert issubclass(DaemonError, VociferousError)
 
     def test_daemon_not_running_is_daemon_error(self) -> None:
-        from vociferous.server.client import DaemonNotRunningError, DaemonError
+        from vociferous.server.client import DaemonError, DaemonNotRunningError
 
         assert issubclass(DaemonNotRunningError, DaemonError)
 
     def test_daemon_timeout_is_daemon_error(self) -> None:
-        from vociferous.server.client import DaemonTimeoutError, DaemonError
+        from vociferous.server.client import DaemonError, DaemonTimeoutError
 
         assert issubclass(DaemonTimeoutError, DaemonError)

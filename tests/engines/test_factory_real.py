@@ -6,13 +6,12 @@ Validates engine resolution, model validation, and error handling.
 
 from __future__ import annotations
 
-from pathlib import Path
 import tempfile
 
 import pytest
 
-from vociferous.domain.model import EngineConfig
 from vociferous.domain.exceptions import ConfigurationError
+from vociferous.domain.model import EngineConfig
 from vociferous.engines.factory import build_engine
 from vociferous.engines.model_registry import (
     DEFAULT_CANARY_MODEL,

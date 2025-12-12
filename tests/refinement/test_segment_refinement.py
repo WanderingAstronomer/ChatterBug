@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from vociferous.domain.model import TranscriptSegment
-from vociferous.refinement import CanaryRefiner, NullRefiner, PROMPT_TEMPLATES
+from vociferous.refinement import PROMPT_TEMPLATES, CanaryRefiner, NullRefiner
 
 
 def test_null_refiner_preserves_segments() -> None:
@@ -38,7 +38,7 @@ def test_canary_refiner_segment_structure() -> None:
     # Real refinement requires model loading which we skip in unit tests
     refiner = CanaryRefiner()
     
-    segments = [
+    _segments = [
         TranscriptSegment(id="seg-1", start=0.0, end=3.5, raw_text="this is test"),
         TranscriptSegment(id="seg-2", start=3.5, end=7.0, raw_text="another segment"),
     ]

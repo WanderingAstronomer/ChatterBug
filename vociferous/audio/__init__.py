@@ -1,11 +1,16 @@
 """Audio processing primitives."""
 
-from . import utilities  # noqa: F401
-from .decoder import AudioDecoder, DecodedAudio, FfmpegDecoder, WavDecoder  # noqa: F401
-from .ffmpeg_condenser import FFmpegCondenser  # noqa: F401
-from .recorder import MicrophoneRecorder, SoundDeviceRecorder  # noqa: F401
-from .silero_vad import SileroVAD  # noqa: F401
-from .utilities import (  # noqa: F401
+from . import utilities
+from .decoder import AudioDecoder, DecodedAudio, FfmpegDecoder, WavDecoder
+from .ffmpeg_condenser import FFmpegCondenser
+from .preprocessing import (
+    AudioPreprocessor,
+    PreprocessingConfig,
+    preprocess_audio,
+)
+from .recorder import MicrophoneRecorder, SoundDeviceRecorder
+from .silero_vad import SileroVAD
+from .utilities import (
     apply_noise_gate,
     chunk_pcm_bytes,
     trim_trailing_silence,
@@ -13,15 +18,18 @@ from .utilities import (  # noqa: F401
 
 __all__ = [
     "AudioDecoder",
+    "AudioPreprocessor",
     "DecodedAudio",
-    "FfmpegDecoder",
-    "WavDecoder",
-    "MicrophoneRecorder",
-    "SoundDeviceRecorder",
-    "SileroVAD",
     "FFmpegCondenser",
-    "utilities",
+    "FfmpegDecoder",
+    "MicrophoneRecorder",
+    "PreprocessingConfig",
+    "SileroVAD",
+    "SoundDeviceRecorder",
+    "WavDecoder",
     "apply_noise_gate",
     "chunk_pcm_bytes",
+    "preprocess_audio",
     "trim_trailing_silence",
+    "utilities",
 ]

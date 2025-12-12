@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -11,14 +12,17 @@ from vociferous.domain.exceptions import AudioDecodeError
 def register_decode(app: typer.Typer) -> None:
     @app.command("decode", rich_help_panel="Audio Components")
     def decode_cmd(
-        input: Path = typer.Argument(..., metavar="INPUT", help="Audio file to standardize"),
-        output: Path | None = typer.Option(
-            None,
-            "--output",
-            "-o",
-            metavar="PATH",
-            help="Optional output path (default: <input>_decoded.wav in CWD)",
-        ),
+        input: Annotated[Path, typer.Argument(..., metavar="INPUT", help="Audio file to standardize")],
+        output: Annotated[
+            Path | None,
+            typer.Option(
+                None,
+                "--output",
+                "-o",
+                metavar="PATH",
+                help="Optional output path (default: <input>_decoded.wav in CWD)",
+            ),
+        ] = None,
     ) -> None:
         typer.echo(f"Decoding {input}...")
         if not input.exists():

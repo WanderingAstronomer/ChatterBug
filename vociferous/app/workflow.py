@@ -1,31 +1,33 @@
-from __future__ import annotations
-
 """Batch transcription workflows (no sessions, no arbiters)."""
 
+from __future__ import annotations
+
 import wave
+from collections.abc import Iterable
+from contextlib import suppress
 from dataclasses import replace
 from pathlib import Path
-from typing import Iterable, Sequence
+
+# Import progress tracking (use TYPE_CHECKING to avoid circular imports)
+from typing import TYPE_CHECKING
 
 from vociferous.cli.components.condenser import CondenserComponent
 from vociferous.cli.components.decoder import DecoderComponent
 from vociferous.cli.components.vad import VADComponent
 from vociferous.config.schema import ArtifactConfig
 from vociferous.domain.model import (
-    EngineProfile,
     EngineConfig,
     EngineKind,
+    EngineProfile,
     SegmentationProfile,
-    TranscriptSegment,
+    TranscriptionEngine,
     TranscriptionOptions,
     TranscriptionResult,
-    TranscriptionEngine,
+    TranscriptSegment,
 )
 from vociferous.engines.factory import build_engine
 from vociferous.sources import FileSource, Source
 
-# Import progress tracking (use TYPE_CHECKING to avoid circular imports)
-from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from vociferous.app.progress import TranscriptionProgress
 
@@ -58,6 +60,11 @@ class EngineWorker:
     
     Supports lazy loading and daemon integration - the local engine is only
     loaded if the daemon is not running or use_daemon is False.
+    
+    Daemon modes:
+        - "never": Never use daemon, always use local engine
+        - "auto": Use daemon if running, don't auto-start
+        - "always": Use daemon and auto-start if not running
     """
 
     def __init__(
@@ -66,15 +73,24 @@ class EngineWorker:
         *,
         engine: TranscriptionEngine | None = None,
         use_daemon: bool = False,
+        daemon_mode: str = "auto",  # "never", "auto", "always"
+        progress: TranscriptionProgress | None = None,
     ) -> None:
         self.profile = profile
         self._provided_engine = engine
         self._engine: TranscriptionEngine | None = engine
         self._warnings: list[str] = []
-        self._use_daemon = use_daemon
+        
+        # Handle legacy use_daemon parameter
+        if not use_daemon:
+            self._daemon_mode = "never"
+        else:
+            self._daemon_mode = daemon_mode
+        
         self._daemon_checked = False
         self._daemon_available = False
         self._used_daemon = False  # Track if daemon was actually used
+        self._progress = progress
         
         # Only load engine immediately if one was provided
         # Otherwise, defer to first use to allow daemon check
@@ -82,21 +98,35 @@ class EngineWorker:
             self._engine = engine
 
     def _check_daemon(self) -> bool:
-        """Check if daemon is available (cached)."""
+        """Check if daemon is available (cached), auto-starting if configured."""
         if self._daemon_checked:
             return self._daemon_available
         
         self._daemon_checked = True
-        if not self._use_daemon:
+        
+        if self._daemon_mode == "never":
             self._daemon_available = False
             return False
             
         try:
-            from vociferous.server import is_daemon_running
-            self._daemon_available = is_daemon_running()
+            from vociferous.server import DaemonManager
+            
+            manager = DaemonManager()
+            
+            if self._daemon_mode == "always":
+                # Auto-start if not running
+                self._daemon_available = manager.ensure_running(
+                    auto_start=True,
+                    progress=self._progress,
+                )
+            else:
+                # "auto" mode - just check, don't start
+                self._daemon_available = manager.is_running()
+            
             if self._daemon_available:
                 import logging
                 logging.getLogger(__name__).info("Daemon detected, will use for transcription")
+                
         except ImportError:
             self._daemon_available = False
         
@@ -227,9 +257,11 @@ def transcribe_file_workflow(
     condensed_path: Path | None = None,
     engine_worker: EngineWorker | None = None,
     use_daemon: bool = False,
-    progress: "TranscriptionProgress | None" = None,
+    daemon_mode: str = "auto",
+    preprocess: str | None = None,
+    progress: TranscriptionProgress | None = None,
 ) -> TranscriptionResult:
-    """Canonical decode → VAD → condense → transcribe workflow.
+    """Canonical decode → preprocess → VAD → condense → transcribe workflow.
 
     The workflow is file-first: all sources resolve to a local path, audio
     preprocessing happens in the audio module, and a single engine instance
@@ -247,7 +279,9 @@ def transcribe_file_workflow(
         intermediate_dir: Directory for intermediate files
         condensed_path: Pre-condensed audio path (skip VAD)
         engine_worker: Pre-configured engine worker
-        use_daemon: Use warm model daemon if available
+        use_daemon: Use warm model daemon if available (legacy, use daemon_mode)
+        daemon_mode: Daemon mode - "never", "auto" (use if running), "always" (auto-start)
+        preprocess: Audio preprocessing preset (none, basic, clean, phone, podcast)
         progress: Optional progress tracker for UI feedback
     """
     artifact_cfg = artifact_config or ArtifactConfig()
@@ -263,7 +297,12 @@ def transcribe_file_workflow(
 
     cleanup_paths: list[Path] = []
     had_error = False
-    worker = engine_worker or EngineWorker(engine_profile, use_daemon=use_daemon)
+    worker = engine_worker or EngineWorker(
+        engine_profile,
+        use_daemon=use_daemon,
+        daemon_mode=daemon_mode,
+        progress=progress,
+    )
     warnings: list[str] = list(worker.warnings)
     try:
         target_audio = source.resolve_to_path(work_dir)
@@ -279,13 +318,28 @@ def transcribe_file_workflow(
 
             decoded_path = _name("decoded", "wav")
             timestamps_path = _name("decoded_vad_timestamps", "json")
-            condensed_target = _name("decoded_condensed", "wav")
 
             # Step 1: Decode
             decode_task = progress.start_decode() if progress else None
             decoded_path = DecoderComponent().decode_to_wav(target_audio, decoded_path)
             if progress:
                 progress.complete_decode(decode_task)
+            
+            # Step 1.5: Preprocess (if requested)
+            if preprocess and preprocess != "none":
+                from vociferous.audio.preprocessing import AudioPreprocessor, PreprocessingConfig
+                
+                preprocess_task = progress.start_preprocess() if progress else None
+                preprocess_config = PreprocessingConfig.from_preset(preprocess)
+                preprocessor = AudioPreprocessor(preprocess_config)
+                
+                preprocessed_path = _name("preprocessed", "wav")
+                decoded_path = preprocessor.preprocess(decoded_path, preprocessed_path, progress=None)
+                
+                if progress:
+                    progress.complete_preprocess(preprocess_task, preprocess)
+                
+                cleanup_paths.append(preprocessed_path)
             
             # Step 2: VAD
             vad_task = progress.start_vad() if progress else None
@@ -373,16 +427,12 @@ def transcribe_file_workflow(
     finally:
         if should_cleanup and (not had_error or not artifact_cfg.keep_on_error):
             for path in cleanup_paths:
-                try:
+                with suppress(OSError):
                     path.unlink(missing_ok=True)
-                except OSError:
-                    pass
             # Only remove the work directory if it was a temp dir we created
             if not intermediate_dir and artifact_cfg.output_directory == work_dir:
-                try:
+                with suppress(OSError):
                     work_dir.rmdir()
-                except OSError:
-                    pass
 
 
 def transcribe_workflow(

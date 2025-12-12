@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
-from typing import Optional
+from typing import Annotated
 
 import typer
 from rich.console import Console
@@ -14,7 +14,6 @@ from vociferous.app.workflow import EngineWorker, transcribe_file_workflow
 from vociferous.audio.utilities import get_audio_duration
 from vociferous.config import get_engine_profile, get_segmentation_profile, load_config
 from vociferous.domain.exceptions import ConfigurationError, DependencyError, EngineError
-from vociferous.domain.model import EngineProfile
 from vociferous.engines.factory import build_engine
 from vociferous.sources import FileSource
 
@@ -24,36 +23,54 @@ console = Console()
 def register_bench(app: typer.Typer) -> None:
     @app.command("bench", rich_help_panel="Utilities")
     def bench_cmd(
-        corpus: Path = typer.Argument(
-            ...,
-            help="Directory containing audio files to benchmark",
-            metavar="CORPUS",
-        ),
-        engine_profile: str = typer.Option(
-            "canary_qwen_fp16",
-            "--engine-profile",
-            help="Engine profile name from config",
-        ),
-        segmentation_profile: str = typer.Option(
-            "default",
-            "--segmentation-profile",
-            help="Segmentation profile name from config",
-        ),
-        pattern: str = typer.Option(
-            "*.wav",
-            "--pattern",
-            help="File pattern to match (e.g., '*.wav', '*.mp3', '*')",
-        ),
-        refine: bool = typer.Option(
-            False,
-            "--refine",
-            help="Enable refinement pass (increases processing time)",
-        ),
-        reference_dir: Optional[Path] = typer.Option(
-            None,
-            "--reference-dir",
-            help="Directory with reference transcripts for WER calculation (not yet implemented)",
-        ),
+        corpus: Annotated[
+            Path,
+            typer.Argument(
+                ...,
+                help="Directory containing audio files to benchmark",
+                metavar="CORPUS",
+            ),
+        ],
+        engine_profile: Annotated[
+            str,
+            typer.Option(
+                "canary_qwen_fp16",
+                "--engine-profile",
+                help="Engine profile name from config",
+            ),
+        ] = "canary_qwen_fp16",
+        segmentation_profile: Annotated[
+            str,
+            typer.Option(
+                "default",
+                "--segmentation-profile",
+                help="Segmentation profile name from config",
+            ),
+        ] = "default",
+        pattern: Annotated[
+            str,
+            typer.Option(
+                "*.wav",
+                "--pattern",
+                help="File pattern to match (e.g., '*.wav', '*.mp3', '*')",
+            ),
+        ] = "*.wav",
+        refine: Annotated[
+            bool,
+            typer.Option(
+                False,
+                "--refine",
+                help="Enable refinement pass (increases processing time)",
+            ),
+        ] = False,
+        reference_dir: Annotated[
+            Path | None,
+            typer.Option(
+                None,
+                "--reference-dir",
+                help="Directory with reference transcripts for WER calculation (not yet implemented)",
+            ),
+        ] = None,
     ) -> None:
         """Benchmark transcription pipeline performance.
 

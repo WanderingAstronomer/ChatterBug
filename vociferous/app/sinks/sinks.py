@@ -4,7 +4,7 @@ from pathlib import Path
 
 import typer
 
-from vociferous.domain import TranscriptSegment, TranscriptSink, TranscriptionResult
+from vociferous.domain import TranscriptionResult, TranscriptSegment, TranscriptSink
 from vociferous.domain.exceptions import DependencyError
 
 

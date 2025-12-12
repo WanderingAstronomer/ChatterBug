@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
@@ -11,19 +12,25 @@ from vociferous.domain.exceptions import AudioDecodeError
 def register_vad(app: typer.Typer) -> None:
     @app.command("vad", rich_help_panel="Audio Components")
     def vad_cmd(
-        input: Path = typer.Argument(..., metavar="INPUT_WAV", help="PCM mono 16kHz WAV"),
-        output: Path | None = typer.Option(
-            None,
-            "--output",
-            "-o",
-            metavar="PATH",
-            help="Optional output path for timestamps JSON (default: <input>_vad_timestamps.json)",
-        ),
-        threshold: float = typer.Option(0.5, help="VAD threshold (0-1, higher = stricter)"),
-        min_silence_ms: int = typer.Option(500, help="Minimum silence between segments (ms)"),
-        min_speech_ms: int = typer.Option(250, help="Minimum speech duration (ms)"),
-        speech_pad_ms: int = typer.Option(250, help="Padding added to segment boundaries (ms)"),
-        max_speech_duration_s: float = typer.Option(40.0, help="Max duration for any speech segment (s)"),
+        input: Annotated[
+            Path,
+            typer.Argument(..., metavar="INPUT_WAV", help="PCM mono 16kHz WAV"),
+        ],
+        output: Annotated[
+            Path | None,
+            typer.Option(
+                None,
+                "--output",
+                "-o",
+                metavar="PATH",
+                help="Optional output path for timestamps JSON (default: <input>_vad_timestamps.json)",
+            ),
+        ] = None,
+        threshold: Annotated[float, typer.Option(help="VAD threshold (0-1, higher = stricter)")] = 0.5,
+        min_silence_ms: Annotated[int, typer.Option(help="Minimum silence between segments (ms)")] = 500,
+        min_speech_ms: Annotated[int, typer.Option(help="Minimum speech duration (ms)")] = 250,
+        speech_pad_ms: Annotated[int, typer.Option(help="Padding added to segment boundaries (ms)")] = 250,
+        max_speech_duration_s: Annotated[float, typer.Option(help="Max duration for any speech segment (s)")] = 40.0,
     ) -> None:
         typer.echo(f"Detecting speech in {input}...")
         if not input.exists():

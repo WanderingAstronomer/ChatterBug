@@ -18,7 +18,11 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from vociferous.domain.exceptions import AudioDecodeError, AudioProcessingError, UnsplittableSegmentError
+from vociferous.domain.exceptions import (
+    AudioDecodeError,
+    AudioProcessingError,
+    UnsplittableSegmentError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -346,13 +350,9 @@ class FFmpegCondenser:
             if single_duration > max_chunk_s:
                 seg = chunk_segments[0]
                 raise UnsplittableSegmentError(
-                    f"Single speech segment at {seg['start']:.1f}s-{seg['end']:.1f}s "
-                    f"has duration {single_duration:.1f}s which exceeds the "
-                    f"{max_chunk_s:.1f}s limit. This segment cannot be split automatically.\n\n"
-                    f"Possible solutions:\n"
-                    f"  1. Adjust VAD parameters (lower min_silence_ms) to detect pauses within the segment\n"
-                    f"  2. Manually split the audio file\n"
-                    f"  3. Use an engine with longer context support"
+                    segment_start=seg["start"],
+                    segment_end=seg["end"],
+                    max_chunk_s=max_chunk_s,
                 )
         
         # Scan backwards to find largest valid chunk under max
@@ -384,16 +384,13 @@ class FFmpegCondenser:
         
         # No valid split point found
         if best_idx is None:
-            total_duration = self._calculate_chunk_duration(
-                chunk_segments,
-                max_intra_gap_s,
-                boundary_margin_s,
-            )
+            # Use the overall range of the chunk
+            first_seg = chunk_segments[0]
+            last_seg = chunk_segments[-1]
             raise UnsplittableSegmentError(
-                f"Cannot force-split chunk with {len(chunk_segments)} segments "
-                f"(total {total_duration:.1f}s): even the smallest valid split "
-                f"exceeds {max_chunk_s:.1f}s. This indicates severely malformed "
-                f"VAD output or audio with no detectable pauses."
+                segment_start=first_seg["start"],
+                segment_end=last_seg["end"],
+                max_chunk_s=max_chunk_s,
             )
         
         logger.warning(
@@ -461,8 +458,7 @@ class FFmpegCondenser:
             
             result = subprocess.run(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 text=True,
                 check=True,
             )
@@ -521,12 +517,8 @@ class FFmpegCondenser:
                 if end - start <= 0:
                     continue
                 
-                # Add margin at start of first segment
-                if i == 0:
-                    start = max(0, start - margin_s)
-                else:
-                    # Prevent overlap with previous segment
-                    start = max(start, previous_end)
+                # Add margin at start of first segment, clamp overlap otherwise
+                start = max(0, start - margin_s) if i == 0 else max(start, previous_end)
                 
                 # Extend into gap or add trailing margin
                 if i < len(timestamps) - 1:
@@ -576,8 +568,7 @@ class FFmpegCondenser:
             
             proc = subprocess.run(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                capture_output=True,
                 check=False,
             )
             

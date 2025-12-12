@@ -42,7 +42,7 @@ This is the refined output with proper punctuation.
         assert "<think>" not in result, "Think tag leaked into output"
         assert "</think>" not in result, "Think close tag leaked"
         assert "<|im_start|>" not in result, "Chat marker leaked"
-        assert "This is the refined output with proper punctuation." == result
+        assert result == "This is the refined output with proper punctuation."
 
     def test_incomplete_think_mode_fallback(self, mock_engine):
         """When model gets stuck in thinking with only think content, fallback to original."""

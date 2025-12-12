@@ -8,8 +8,8 @@ from __future__ import annotations
 
 import array
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 from vociferous.domain.exceptions import AudioDecodeError, ConfigurationError
 from vociferous.domain.model import AudioChunk

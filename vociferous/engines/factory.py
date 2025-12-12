@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
-from vociferous.domain.model import EngineConfig, EngineKind, TranscriptionEngine
 from vociferous.domain.exceptions import ConfigurationError
-from .model_registry import normalize_model_name
+from vociferous.domain.model import EngineConfig, EngineKind, TranscriptionEngine
+
 from .hardware import get_optimal_device
+from .model_registry import normalize_model_name
 
 logger = logging.getLogger(__name__)
 
