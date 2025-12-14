@@ -9,3 +9,9 @@ extend-ignore = ["E741"]
 [tool.ruff.lint.per-file-ignores]
 # Allow unused imports in test files for import-testing patterns
 "tests/*.py" = ["F401"]
+# Import-availability checks and letter keys I/O in KeyCode enum
+"src/key_listener.py" = ["F401", "E741"]
+# Stylesheet multiline string has intentional blank lines
+"src/ui/main_window.py" = ["W293"]
+# Class constant doesn't need ClassVar annotation
+"src/ui/settings_dialog.py" = ["RUF012"]

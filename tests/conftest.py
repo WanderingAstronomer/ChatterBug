@@ -1,8 +1,10 @@
 """
 Pytest configuration and fixtures for Vociferous tests.
 """
-import sys
 import os
+import sys
+from contextlib import suppress
+
 import pytest
 
 # Add src to path
@@ -29,7 +31,5 @@ def key_listener():
     from key_listener import KeyListener
     kl = KeyListener()
     yield kl
-    try:
+    with suppress(Exception):
         kl.stop()
-    except Exception:
-        pass

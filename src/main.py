@@ -28,8 +28,8 @@ Application Architecture:
 │         │                               │               │       │
 │         ▼                               ▼               ▼       │
 │  ┌──────────────┐              ┌──────────────┐ ┌──────────────┐│
-│  │StatusWindow  │              │InputSimulator│ │  Tray Icon   ││
-│  │(UI feedback) │              │(text inject) │ │  (status)    ││
+│  │ MainWindow   │              │InputSimulator│ │  Tray Icon   ││
+│  │(UI + history)│              │(text inject) │ │  (status)    ││
 │  └──────────────┘              └──────────────┘ └──────────────┘│
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -95,28 +95,32 @@ Python 3.12+ Features:
 ----------------------
 - Match/case for status text selection
 - `list[tuple]` generic type hints without imports
-- `Path` objects for asset paths
 """
 import logging
+import subprocess
 import sys
-from pathlib import Path
+from contextlib import suppress
 
 from PyQt5.QtCore import QObject
 from PyQt5.QtGui import QIcon
-from PyQt5.QtWidgets import QApplication, QSystemTrayIcon, QMenu, QAction
+from PyQt5.QtWidgets import QAction, QApplication, QMenu, QStyle, QSystemTrayIcon
 
+from history_manager import HistoryManager
 from key_listener import KeyListener
 from result_thread import ResultThread
-from ui.status_window import StatusWindow
 from transcription import create_local_model
-from input_simulation import InputSimulator
+from ui.main_window import MainWindow
+from ui.settings_dialog import SettingsDialog
 from utils import ConfigManager
 
-logger = logging.getLogger(__name__)
+# Optional clipboard support
+try:
+    import pyperclip
+    HAS_PYPERCLIP = True
+except ImportError:
+    HAS_PYPERCLIP = False
 
-# Asset paths - resolve relative to project root (one level up from src/)
-ASSETS_DIR = Path(__file__).parent.parent / 'assets'
-LOGO_PATH = ASSETS_DIR / 'ww-logo.png'
+logger = logging.getLogger(__name__)
 
 
 class VociferousApp(QObject):
@@ -124,7 +128,7 @@ class VociferousApp(QObject):
     Main application orchestrator for Vociferous speech-to-text.
 
     This class follows the Mediator pattern - it coordinates communication
-    between components (KeyListener, ResultThread, StatusWindow, etc.)
+    between components (KeyListener, ResultThread, MainWindow, etc.)
     without them knowing about each other.
 
     Lifecycle:
@@ -151,8 +155,7 @@ class VociferousApp(QObject):
         key_listener: Hotkey detection (evdev/pynput backend)
         local_model: Loaded Whisper model (kept in memory for fast inference)
         result_thread: Current recording/transcription thread (or None)
-        status_window: UI showing recording/transcribing state
-        input_simulator: Text injection (pynput/ydotool/etc.)
+        main_window: UI showing recording/transcribing state
         tray_icon: System tray presence
         _thread_connections: Tracked signal connections for cleanup
     """
@@ -161,14 +164,19 @@ class VociferousApp(QObject):
         super().__init__()
         self.app = QApplication(sys.argv)
         self.app.setApplicationName("Vociferous")
-        self.app.setWindowIcon(QIcon(str(LOGO_PATH)))
         self.app.setQuitOnLastWindowClosed(False)  # Keep running in tray
+
+        # Set larger base font for 2x UI scale
+        font = self.app.font()
+        font.setPointSize(18)
+        self.app.setFont(font)
 
         # Initialize config
         ConfigManager.initialize()
 
         # Track active signal connections for cleanup
         self._thread_connections: list[tuple] = []
+        self.settings_dialog: SettingsDialog | None = None
 
         # Initialize components
         self.initialize_components()
@@ -178,12 +186,11 @@ class VociferousApp(QObject):
         Initialize all application components in dependency order.
 
         Initialization order matters:
-        1. InputSimulator - no dependencies
-        2. KeyListener - needs config loaded (done in __init__)
-        3. Whisper model - slow, loaded early to avoid first-use delay
-        4. StatusWindow - needs Qt app running
-        5. Tray icon - needs Qt app and logo asset
-        6. Start listening - only after everything else is ready
+        1. KeyListener - needs config loaded (done in __init__)
+        2. Whisper model - slow, loaded early to avoid first-use delay
+        3. MainWindow - needs Qt app running
+        4. Tray icon
+        5. Start listening - only after everything else is ready
 
         Why load model eagerly?
         -----------------------
@@ -192,9 +199,6 @@ class VociferousApp(QObject):
         The tradeoff is slower startup, but better UX during use.
         """
         ConfigManager.console_print("Initializing Vociferous...")
-
-        # Input simulator for text injection
-        self.input_simulator = InputSimulator()
 
         # Key listener for hotkey detection
         self.key_listener = KeyListener()
@@ -208,11 +212,26 @@ class VociferousApp(QObject):
         # Result thread (for recording/transcription)
         self.result_thread = None
 
-        # Status window (shows recording/transcribing state)
-        self.status_window = StatusWindow()
+        # History manager for transcription storage
+        self.history_manager = HistoryManager()
+
+        # Main window (shows recording/transcribing state)
+        self.main_window = MainWindow(self.history_manager)
+        self.main_window.setWindowIcon(self._build_tray_icon())
+        self.main_window.on_settings_requested(self.show_settings)
+
+        # Connect history widget re-inject signal
+        self.main_window.history_widget.reinjectRequested.connect(
+            self.on_reinject_requested
+        )
 
         # System tray
         self.create_tray_icon()
+        self.main_window.set_tray_icon(self.tray_icon)
+        self.main_window.windowCloseRequested.connect(self._on_main_window_hidden)
+
+        # React to configuration changes
+        ConfigManager.instance().configChanged.connect(self._on_config_changed)
 
         # Start listening for hotkey
         self.key_listener.start()
@@ -239,10 +258,8 @@ class VociferousApp(QObject):
         - Status display (tooltip updates with state)
         - Exit point (right-click → Exit)
         """
-        self.tray_icon = QSystemTrayIcon(
-            QIcon(str(LOGO_PATH)),
-            self.app
-        )
+        icon = self._build_tray_icon()
+        self.tray_icon = QSystemTrayIcon(icon, self.app)
 
         tray_menu = QMenu()
 
@@ -254,6 +271,19 @@ class VociferousApp(QObject):
 
         tray_menu.addSeparator()
 
+        show_hide_action = QAction('Show/Hide Window', self.app)
+        show_hide_action.triggered.connect(self.toggle_main_window)
+        tray_menu.addAction(show_hide_action)
+        self.show_hide_action = show_hide_action
+
+        settings_action = QAction('Settings...', self.app)
+        settings_action.setEnabled(True)
+        settings_action.triggered.connect(self.show_settings)
+        tray_menu.addAction(settings_action)
+        self.settings_action = settings_action
+
+        tray_menu.addSeparator()
+
         # Exit action
         exit_action = QAction('Exit', self.app)
         exit_action.triggered.connect(self.exit_app)
@@ -261,7 +291,62 @@ class VociferousApp(QObject):
 
         self.tray_icon.setContextMenu(tray_menu)
         self.tray_icon.setToolTip("Vociferous - Speech to Text")
+        self.tray_icon.activated.connect(self.on_tray_activated)
         self.tray_icon.show()
+
+        # Start with window shown on first launch
+        self.main_window.show_and_raise()
+
+    def toggle_main_window(self) -> None:
+        """Toggle visibility of the main window."""
+        if self.main_window.isVisible():
+            self.main_window.hide()
+        else:
+            self.main_window.show_and_raise()
+
+    def on_tray_activated(self, reason):
+        """Handle tray icon activation (double-click to toggle window)."""
+        if reason == QSystemTrayIcon.DoubleClick:
+            self.toggle_main_window()
+
+    def _on_main_window_hidden(self) -> None:
+        """Handle window close event (currently no action needed)."""
+        pass
+
+    def show_settings(self) -> None:
+        """Open the settings dialog and apply changes immediately."""
+        # Create fresh dialog each time to avoid state issues
+        dialog = SettingsDialog(self.key_listener, self.main_window)
+        dialog.exec_()
+
+    def _on_config_changed(self, section: str, key: str, value) -> None:
+        """Handle live config updates for hotkey, backend, and model changes."""
+        if section == 'recording_options' and key == 'activation_key':
+            self.key_listener.update_activation_keys()
+            return
+
+        if section == 'recording_options' and key == 'input_backend':
+            self.key_listener.update_backend()
+            return
+
+        # Reload model when model options change
+        if section == 'model_options' and key in {'compute_type', 'device', 'language'}:
+            self._reload_model()
+
+    def _reload_model(self) -> None:
+        """Reload the Whisper model with updated configuration."""
+        ConfigManager.console_print("Reloading Whisper model...")
+        self.local_model = create_local_model()
+        ConfigManager.console_print("Model reloaded successfully.")
+
+    def _build_tray_icon(self) -> QIcon:
+        """Return a non-empty icon for the tray using theme or Qt defaults."""
+        icon = QIcon.fromTheme('microphone-sensitivity-high')
+        if icon.isNull():
+            app_instance = QApplication.instance()
+            style = self.app.style() if hasattr(self, 'app') else app_instance.style()
+            icon = style.standardIcon(QStyle.SP_MediaPlay) if style else QIcon()
+        return icon
 
     def on_activation(self):
         """Called when activation key is pressed."""
@@ -284,9 +369,12 @@ class VociferousApp(QObject):
             'recording_options', 'recording_mode'
         )
 
-        if recording_mode == 'hold_to_record':
-            if self.result_thread and self.result_thread.isRunning():
-                self.result_thread.stop_recording()
+        if (
+            recording_mode == 'hold_to_record'
+            and self.result_thread
+            and self.result_thread.isRunning()
+        ):
+            self.result_thread.stop_recording()
 
     def start_result_thread(self):
         """
@@ -330,10 +418,10 @@ class VociferousApp(QObject):
         self.result_thread = ResultThread(self.local_model)
 
         # Store connections for later cleanup (allows proper disconnection)
+        status_slot = self.main_window.update_transcription_status
         self._thread_connections = [
-            (self.result_thread.statusSignal, self.status_window.updateStatus),
+            (self.result_thread.statusSignal, status_slot),
             (self.result_thread.statusSignal, self.update_tray_status),
-            (self.status_window.closeSignal, self.stop_result_thread),
             (self.result_thread.resultSignal, self.on_transcription_complete),
         ]
 
@@ -348,11 +436,8 @@ class VociferousApp(QObject):
     def _disconnect_thread_signals(self) -> None:
         """Safely disconnect all tracked thread signal connections."""
         for signal, slot in self._thread_connections:
-            try:
+            with suppress(TypeError, RuntimeError):
                 signal.disconnect(slot)
-            except (TypeError, RuntimeError):
-                # Already disconnected or object deleted
-                pass
         self._thread_connections.clear()
 
     def _on_thread_finished(self) -> None:
@@ -394,22 +479,53 @@ class VociferousApp(QObject):
             case _:
                 text = 'Vociferous - Ready'
         self.status_action.setText(text)
+        self.tray_icon.setToolTip(text)
 
     def on_transcription_complete(self, result: str) -> None:
         """
-        Handle completed transcription - inject text into active window.
+        Handle completed transcription - always copies to clipboard.
 
-        This is the final step in the dictation pipeline:
-        Audio → Recording → Transcription → **Text Injection**
+        Output Pipeline:
+        1. Add to history and display in window
+        2. Copy to clipboard (always enabled)
 
-        The InputSimulator handles the complexity of text injection across
-        different display servers (X11, Wayland) and input methods.
+        User can then manually paste with Ctrl+V where needed.
 
         Args:
-            result: Transcribed text to inject (may be empty string)
+            result: Transcribed text (may be empty string)
         """
-        if result:
-            self.input_simulator.typewrite(result)
+        if not result:
+            return
+
+        # Add to history and display in window
+        self.history_manager.add_entry(result)
+        self.main_window.display_transcription(result)
+
+        # Always copy to clipboard for manual paste
+        self._copy_to_clipboard(result)
+
+    def on_reinject_requested(self, text: str) -> None:
+        """
+        Handle re-copy from history.
+
+        Copies text to clipboard for manual paste.
+        Does NOT add to history again.
+        """
+        logger.info(f"Re-copying from history: {text[:50]}...")
+        self._copy_to_clipboard(text)
+
+    def _copy_to_clipboard(self, text: str) -> None:
+        """Copy text to clipboard using available method."""
+        if HAS_PYPERCLIP:
+            with suppress(Exception):
+                pyperclip.copy(text)
+                logger.debug("Copied to clipboard via pyperclip")
+                return
+
+        # Fallback to wl-copy (Wayland)
+        with suppress(Exception):
+            subprocess.run(["wl-copy"], input=text, text=True, check=True)
+            logger.debug("Copied to clipboard via wl-copy")
 
     def cleanup(self) -> None:
         """Clean up resources."""
@@ -421,8 +537,6 @@ class VociferousApp(QObject):
 
         if self.key_listener:
             self.key_listener.stop()
-        if self.input_simulator:
-            self.input_simulator.cleanup()
 
     def exit_app(self) -> None:
         """Exit the application."""

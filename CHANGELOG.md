@@ -1,4 +1,207 @@
-# Vociferous v0.9.0 Alpha - Complete Architectural Rewrite
+# Vociferous Changelog
+
+---
+
+# v1.0.0 Beta - Polished UI & History System
+
+**Date:** December 2025  
+**Status:** Beta
+
+---
+
+## Summary
+
+Major milestone release introducing a full-featured main window with transcription history, graphical settings dialog, and a simplified clipboard-only workflow. The floating status window has been replaced with an integrated UI that provides history management, export capabilities, and live configuration updates.
+
+---
+
+## Breaking Changes from Alpha
+
+### UI Architecture
+
+- **Removed**: `StatusWindow` and `BaseWindow` classes (floating frameless windows)
+- **Removed**: Automatic text injection (unreliable on Wayland)
+- **Replaced with**: `MainWindow` with integrated history and transcription panels
+- **Replaced with**: Clipboard-only output (always copies, user pastes with Ctrl+V)
+
+### Configuration
+
+- **Removed**: `output_options.input_method` auto-inject options (pynput/ydotool/dotool direct typing)
+- **Removed**: `output_options.auto_copy_clipboard`, `auto_inject_text`, `auto_submit_return` cascading options
+- **Simplified**: All transcriptions now copy to clipboard automatically
+
+---
+
+## What's New
+
+### Main Window
+
+A full application window replaces the minimal floating status indicator:
+
+```
+┌──────────────────────────────────────────────────────┐
+│ File  History  Settings  Help                        │
+├──────────────────────────────────────────────────────┤
+│ ┌──History────────┐ │ ┌──Current Transcription────┐ │
+│ │ ▼ December 14th │ │ │                           │ │
+│ │   10:03 a.m. ...│ │ │  Transcribed text here    │ │
+│ │   9:45 a.m. ... │ │ │                           │ │
+│ │ ▼ December 13th │ │ │       ● Recording         │ │
+│ │   ...           │ │ │                           │ │
+│ └─────────────────┘ │ └───────────────────────────┘ │
+│ [Export] [Clear All]│ [Copy]            [Clear]     │
+└──────────────────────────────────────────────────────┘
+```
+
+**Features:**
+- **Dark theme** with blue accents (#1e1e1e background, #5a9fd4 highlights)
+- **Responsive layout**: Side-by-side at ≥700px, stacked below
+- **Resizable splitter** with visual grab handle
+- **Window geometry persistence** (remembers size/position)
+- **System tray integration** with minimize-to-tray behavior
+- **One-time tray notification** when first minimized
+
+### History System
+
+Persistent transcription history with JSONL storage:
+
+- **Storage**: `~/.config/vociferous/history.jsonl` (append-only, thread-safe)
+- **Day grouping**: Entries organized under collapsible day headers (▼/▶)
+- **Friendly timestamps**: "December 14th" headers, "10:03 a.m." entry times
+- **Visual nesting**: Indented entries under day headers with styled headers
+- **Auto-rotation**: Configurable max entries (default 1000)
+
+**History Widget:**
+- Click day headers to collapse/expand
+- Double-click entries to copy
+- Right-click context menu: Copy, Re-inject, Delete
+- Keyboard navigation (Enter to copy, Delete to remove)
+
+**Export:**
+- **Text** (`.txt`): Timestamped entries
+- **CSV** (`.csv`): Spreadsheet-compatible with headers
+- **Markdown** (`.md`): `## Date` and `### Time` heading hierarchy
+
+### Settings Dialog
+
+Schema-driven graphical preferences dialog:
+
+- Accessible via **Settings → Preferences** or **tray right-click → Settings**
+- Dynamically built from `config_schema.yaml`
+- Each schema section becomes a tab (Model Options, Recording Options, Output Options)
+- Widget types inferred from schema (`bool` → checkbox, `str` with options → dropdown)
+- Tooltips display setting descriptions
+- Changes apply immediately (Apply or OK)
+
+### Hotkey Rebinding
+
+Live hotkey capture in Settings:
+
+1. Click **Change...** next to Activation Key
+2. Press desired key combination
+3. Validation blocks reserved shortcuts (Alt+F4, Ctrl+C, etc.)
+4. New hotkey active immediately—no restart required
+
+**Implementation:**
+- `HotkeyWidget` with capture mode
+- `KeyListener.enable_capture_mode()` diverts events to callback
+- `keycode_mapping.py` utilities for display/config string conversion
+
+### Live Configuration Updates
+
+Settings changes take effect without restart:
+
+| Setting | Effect |
+|---------|--------|
+| `activation_key` | KeyListener reloads immediately |
+| `input_backend` | Backend switches (evdev ↔ pynput) |
+| `compute_type`, `device` | Whisper model reloads |
+
+**Signal architecture:**
+- `ConfigManager.configChanged(section, key, value)` signal
+- Main app connects handlers for each setting type
+
+### Recording Indicator
+
+Compact pulsing indicator in the current transcription panel:
+
+- **Recording**: Red "● Recording" with opacity pulse animation (0.3 ↔ 1.0)
+- **Transcribing**: Orange "● Transcribing" (solid)
+- **Idle**: Hidden
+
+### UI Polish
+
+- **Floating pill headers** with rounded borders for panel labels
+- **Custom Clear History dialog** with Yes/No button layout (Yes left, No right)
+- **Styled scrollbars** matching dark theme
+- **Menu bar**: File, History, Settings, Help (View menu removed)
+- **Keyboard shortcuts**: Ctrl+C (copy), Ctrl+E (export), Ctrl+H (focus history), Ctrl+L (clear)
+
+---
+
+## Files Added
+
+```
+src/
+├── history_manager.py      # JSONL storage with rotation and export
+└── ui/
+    ├── history_widget.py   # Collapsible day-grouped history display
+    ├── hotkey_widget.py    # Live hotkey capture widget
+    ├── keycode_mapping.py  # KeyCode ↔ string utilities
+    ├── main_window.py      # Primary application window (820 lines)
+    ├── output_options_widget.py  # (Cascading checkboxes - deprecated)
+    └── settings_dialog.py  # Schema-driven preferences dialog
+
+tests/
+└── test_settings.py        # Settings, hotkey, and config signal tests
+```
+
+## Files Removed
+
+```
+src/ui/
+├── base_window.py          # Frameless window base class
+└── status_window.py        # Floating status indicator
+
+assets/
+├── microphone.png          # Recording icon (now using text indicator)
+├── pencil.png              # Transcribing icon
+└── ww-logo.png             # Application logo (now using system theme icon)
+```
+
+## Files Modified
+
+- **main.py**: Replaced StatusWindow with MainWindow, added HistoryManager, removed InputSimulator direct typing, clipboard-only workflow
+- **input_simulation.py**: Added `reinitialize()` for live updates, auto-detection of input method
+- **key_listener.py**: Added capture mode for hotkey rebinding
+- **utils.py**: ConfigManager now extends QObject, emits `configChanged` and `configReloaded` signals
+- **config_schema.yaml**: Simplified schema, marked internal options with `_internal: true`
+- **run.py**: Suppresses Qt Wayland warnings
+
+---
+
+## Known Issues
+
+- **Button padding**: Minor spacing issue between Export/Clear buttons and history pane bottom edge
+- **Recording indicator font**: Slight font size inconsistency on the active recording indicator
+
+---
+
+## Platform Notes
+
+### Wayland
+
+The clipboard-only workflow was adopted because automatic text injection via ydotool/dotool is unreliable when window focus shifts during transcription. Copying to clipboard and letting the user paste with Ctrl+V is more robust.
+
+### Model Caching
+
+Model loading now tries `local_files_only=True` first to avoid unnecessary HTTP requests to HuggingFace, only downloading if not cached.
+
+---
+
+---
+
+# v0.9.0 Alpha - Complete Architectural Rewrite
 
 **Date:** December 2025  
 **Status:** Pre-release

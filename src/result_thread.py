@@ -223,7 +223,9 @@ class ResultThread(QThread):
             result = transcribe(audio_data, self.local_model)
             elapsed = time.perf_counter() - start_time
 
-            ConfigManager.console_print(f'Transcription completed in {elapsed:.2f}s: {result}')
+            ConfigManager.console_print(
+                f'Transcription completed in {elapsed:.2f}s: {result}'
+            )
 
             if not self.is_running:
                 return
@@ -321,7 +323,6 @@ class ResultThread(QThread):
             channels=1,
             dtype='int16',
             blocksize=frame_size,
-            device=recording_options.get('sound_device'),
             callback=audio_callback
         ):
             while self.is_running and self.is_recording:

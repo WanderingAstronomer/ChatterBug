@@ -139,19 +139,10 @@ class InputSimulator:
     """
 
     def __init__(self) -> None:
-        self.input_method: str = ConfigManager.get_config_value(
-            'output_options', 'input_method'
-        ) or 'pynput'
+        self.input_method: str = ''
         self.dotool_process: subprocess.Popen | None = None
         self.keyboard: PynputController | None = None
-
-        match self.input_method:
-            case 'pynput':
-                self.keyboard = PynputController()
-            case 'dotool':
-                self._initialize_dotool()
-
-        ConfigManager.console_print(f'Input method: {self.input_method}')
+        self._configure_from_config()
 
     def _initialize_dotool(self) -> None:
         """Initialize dotool process for persistent Wayland input."""
@@ -209,52 +200,33 @@ class InputSimulator:
 
     def typewrite(self, text: str) -> None:
         """
-        Type the given text using the configured input method.
+        Inject text by copying to clipboard and simulating Ctrl+V.
 
-        This is the main entry point for text injection. It dispatches
-        to the appropriate backend based on configuration.
+        IMPORTANT: Due to Wayland security restrictions, this may not work
+        reliably if focus has shifted away from the target application.
+        For best results, keep the target window focused when transcription completes.
 
-        Dispatch Pattern:
-        -----------------
-        ```python
-        match self.input_method:
-            case 'pynput':   self._typewrite_pynput(text, interval)
-            case 'ydotool':  self._typewrite_ydotool(text, interval)
-            case 'dotool':   self._typewrite_dotool(text, interval)
-            case 'clipboard': self._copy_to_clipboard(text)
-        ```
-
-        This structural pattern matching is exhaustive - if a new backend
-        is added to config but not here, it will fall through (doing nothing).
-        Adding a `case _:` default would catch that.
-
-        Key Press Delay:
-        ----------------
-        The `interval` parameter controls delay between keystrokes.
-        This is important because:
-        - Too fast: Some apps drop characters
-        - Too slow: User waits forever
-        - Default 5ms is a good balance
+        Strategy:
+        ---------
+        1. Copy text to clipboard
+        2. Wait for modifier keys to be fully released
+        3. Simulate Ctrl+V keypress to paste
 
         Args:
-            text: The text to type into the focused application
+            text: The text to inject into the focused application
         """
         if not text:
             return
 
-        interval: float = ConfigManager.get_config_value(
-            'output_options', 'writing_key_press_delay'
-        ) or 0.005
+        # Step 1: Copy to clipboard
+        self._copy_to_clipboard(text)
 
-        match self.input_method:
-            case 'pynput':
-                self._typewrite_pynput(text, interval)
-            case 'ydotool':
-                self._typewrite_ydotool(text, interval)
-            case 'dotool':
-                self._typewrite_dotool(text, interval)
-            case 'clipboard':
-                self._copy_to_clipboard(text)
+        # Step 2: Wait for modifier keys to be fully released
+        # Longer wait (500ms) to ensure Alt key release doesn't inject a character
+        time.sleep(0.5)
+
+        # Step 3: Simulate Ctrl+V to paste
+        self._simulate_paste()
 
     def _typewrite_pynput(self, text: str, interval: float) -> None:
         """Type using pynput (X11)."""
@@ -294,6 +266,28 @@ class InputSimulator:
             logger.warning(f'dotool error: {e}. Falling back to clipboard.')
             self._copy_to_clipboard(text)
 
+    def _simulate_paste(self) -> None:
+        """Simulate Ctrl+V keystroke to paste clipboard content."""
+        match self.input_method:
+            case 'pynput':
+                if self.keyboard:
+                    from pynput.keyboard import Key
+                    self.keyboard.press(Key.ctrl)
+                    self.keyboard.press('v')
+                    time.sleep(0.02)
+                    self.keyboard.release('v')
+                    self.keyboard.release(Key.ctrl)
+            case 'dotool':
+                if self.dotool_process and self.dotool_process.stdin:
+                    with suppress(Exception):
+                        self.dotool_process.stdin.write("key ctrl+v\n")
+                        self.dotool_process.stdin.flush()
+            case 'ydotool':
+                with suppress(subprocess.CalledProcessError):
+                    subprocess.run(["ydotool", "key", "29:1", "47:1", "47:0", "29:0"], check=True)
+            case _:
+                logger.warning('Cannot simulate Ctrl+V with current input method')
+
     def _copy_to_clipboard(self, text: str) -> None:
         """Copy text to clipboard using pyperclip or wl-copy."""
         if not text:
@@ -302,12 +296,10 @@ class InputSimulator:
         if HAS_PYPERCLIP:
             with suppress(Exception):
                 pyperclip.copy(text)
-                ConfigManager.console_print('Copied transcription to clipboard.')
                 return
 
         try:
             subprocess.run(["wl-copy"], input=text, text=True, check=True)
-            ConfigManager.console_print('Copied transcription to clipboard via wl-copy.')
         except Exception:
             logger.error('Clipboard copy failed. Install wl-clipboard or pyperclip.')
 
@@ -315,3 +307,54 @@ class InputSimulator:
         """Clean up resources."""
         if self.input_method == 'dotool':
             self._terminate_dotool()
+
+    def reinitialize(self) -> None:
+        """Reload input method configuration and reconfigure backend."""
+        self.cleanup()
+        self._configure_from_config()
+
+    def _configure_from_config(self) -> None:
+        """Auto-detect and configure the best available input method."""
+        configured = ConfigManager.get_config_value('output_options', 'input_method')
+
+        # Auto-detect if not explicitly set
+        if not configured or configured == 'auto':
+            self.input_method = self._auto_detect_input_method()
+        else:
+            self.input_method = configured
+
+        match self.input_method:
+            case 'pynput':
+                self.keyboard = PynputController()
+            case 'dotool':
+                self._initialize_dotool()
+            case 'ydotool':
+                self.keyboard = None
+            case _:
+                self.input_method = 'pynput'
+                self.keyboard = PynputController()
+
+        logger.debug(f'Input method: {self.input_method}')
+
+    def _auto_detect_input_method(self) -> str:
+        """Detect the best input method for the current display server."""
+        import os
+        import shutil
+
+        # Check if running on Wayland
+        wayland_display = os.environ.get('WAYLAND_DISPLAY')
+        xdg_session = os.environ.get('XDG_SESSION_TYPE', '').lower()
+        is_wayland = wayland_display or xdg_session == 'wayland'
+
+        if is_wayland:
+            # Prefer dotool (persistent process) over ydotool
+            if shutil.which('dotool'):
+                return 'dotool'
+            if shutil.which('ydotool'):
+                return 'ydotool'
+            # Fall back to pynput (works with XWayland apps)
+            logger.warning(
+                'Wayland detected but no dotool/ydotool. Using pynput.'
+            )
+
+        return 'pynput'

@@ -111,6 +111,12 @@ def create_local_model() -> 'WhisperModel':
     exception and retry with CPU. This provides resilience without requiring
     user intervention.
 
+    Cache Optimization:
+    -------------------
+    The function first attempts to load from local cache (local_files_only=True)
+    to avoid unnecessary HTTP requests to HuggingFace. Only if the model isn't
+    cached will it download with network access.
+
     Returns:
         Configured WhisperModel ready for transcription
 
@@ -135,14 +141,32 @@ def create_local_model() -> 'WhisperModel':
             device = 'cpu'
             ConfigManager.console_print('Using int8 quantization, forcing CPU.')
 
+    # Try loading from cache first to avoid unnecessary HTTP requests
+    model = None
     try:
-        model = WhisperModel(model_name, device=device, compute_type=compute_type)
-        ConfigManager.console_print(f'Model loaded: {model_name} on {device} ({compute_type})')
-    except Exception as e:
-        logger.warning(f'Error loading model on {device}: {e}')
-        ConfigManager.console_print('Falling back to CPU...')
-        model = WhisperModel(model_name, device='cpu', compute_type=compute_type)
-        ConfigManager.console_print(f'Model loaded: {model_name} on CPU ({compute_type})')
+        # Attempt local-only load (no network)
+        model = WhisperModel(
+            model_name,
+            device=device,
+            compute_type=compute_type,
+            local_files_only=True
+        )
+        ConfigManager.console_print(
+            f'Model loaded from cache: {model_name} on {device}'
+        )
+    except Exception:
+        # Model not in cache, download it
+        ConfigManager.console_print(f'Model not cached, downloading {model_name}...')
+        try:
+            model = WhisperModel(model_name, device=device, compute_type=compute_type)
+            ConfigManager.console_print(
+                f'Model downloaded: {model_name} on {device}'
+            )
+        except Exception as e:
+            logger.warning(f'Error loading model on {device}: {e}')
+            ConfigManager.console_print('Falling back to CPU...')
+            model = WhisperModel(model_name, device='cpu', compute_type=compute_type)
+            ConfigManager.console_print(f'Model loaded: {model_name} on CPU')
 
     return model
 

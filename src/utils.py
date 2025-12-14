@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from PyQt5.QtCore import QObject, pyqtSignal
 
 # Module-level constants define file locations used throughout the application.
 # Using Path objects (not strings) enables cross-platform compatibility and
@@ -55,7 +56,7 @@ _SCHEMA_FILENAME = 'config_schema.yaml'
 logger = logging.getLogger(__name__)
 
 
-class ConfigManager:
+class ConfigManager(QObject):
     """
     Thread-safe singleton configuration manager.
 
@@ -75,8 +76,12 @@ class ConfigManager:
     _instance: 'ConfigManager | None' = None
     _lock = threading.Lock()
 
+    configChanged = pyqtSignal(str, str, object)
+    configReloaded = pyqtSignal()
+
     def __init__(self) -> None:
         """Initialize the ConfigManager instance."""
+        super().__init__()
         self.config: dict[str, Any] = {}
         self.schema: dict[str, Any] = {}
         self._print_enabled: bool = True
@@ -116,6 +121,13 @@ class ConfigManager:
         if cls._instance is None:
             raise RuntimeError("ConfigManager not initialized")
         return cls._instance.schema
+
+    @classmethod
+    def instance(cls) -> 'ConfigManager':
+        """Return the initialized ConfigManager instance."""
+        if cls._instance is None:
+            raise RuntimeError("ConfigManager not initialized")
+        return cls._instance
 
     @classmethod
     def get_config_section(cls, *keys: str) -> dict[str, Any]:
@@ -204,6 +216,12 @@ class ConfigManager:
                         config = config[key]
             config[keys[-1]] = value
 
+        # Emit after releasing the lock to avoid deadlocks
+        if keys:
+            section = keys[0]
+            leaf_key = keys[-1]
+            cls._instance.configChanged.emit(section, leaf_key, value)
+
     @staticmethod
     def load_config_schema(schema_path: Path | str | None = None) -> dict[str, Any]:
         """Load the configuration schema from a YAML file."""
@@ -242,7 +260,10 @@ class ConfigManager:
                 case _:
                     return item
 
-        return {category: extract_value(settings) for category, settings in self.schema.items()}
+        return {
+            category: extract_value(settings)
+            for category, settings in self.schema.items()
+        }
 
     def load_user_config(self, config_path: Path | str | None = None) -> None:
         """
@@ -296,6 +317,7 @@ class ConfigManager:
             raise RuntimeError("ConfigManager not initialized")
         cls._instance.config = cls._instance.load_default_config()
         cls._instance.load_user_config()
+        cls._instance.configReloaded.emit()
 
     @classmethod
     def config_file_exists(cls) -> bool:
@@ -305,5 +327,10 @@ class ConfigManager:
     @classmethod
     def console_print(cls, message: str) -> None:
         """Log a message if console output is enabled."""
-        if cls._instance and cls._instance.config.get('misc', {}).get('print_to_terminal', True):
+        if not cls._instance:
+            return
+        print_enabled = cls._instance.config.get('misc', {}).get(
+            'print_to_terminal', True
+        )
+        if print_enabled:
             logger.info(message)

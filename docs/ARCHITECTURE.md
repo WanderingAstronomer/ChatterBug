@@ -20,13 +20,13 @@
 
 ## Overview
 
-Vociferous is a speech-to-text dictation tool for Linux. Press a hotkey to start recording, press again to transcribe your speech and inject the text into any application.
+Vociferous is a speech-to-text dictation tool for Linux. Press a hotkey to start recording, press again to transcribe your speech. The text is copied to clipboard for pasting into any application.
 
 ### Key Characteristics
 
 - **Wayland-first**: Works on modern Linux (Wayland and X11)
 - **GPU-accelerated**: Uses faster-whisper with CUDA for real-time transcription
-- **Minimal UI**: System tray icon + floating status window
+- **Full-featured UI**: Main window with history, settings dialog, system tray
 - **Modern Python**: Leverages Python 3.12+ features throughout
 
 ---
@@ -40,28 +40,29 @@ sequenceDiagram
     participant User
     participant Vociferous
     participant Whisper
-    participant TargetApp as Target Application
+    participant Clipboard
 
-    Note over User,TargetApp: Application is running in background
+    Note over User,Clipboard: Application is running in background
     User->>Vociferous: Press activation key (Right Alt)
     Vociferous->>Vociferous: Start recording
-    Note over Vociferous: Status window appears:<br/>🎤 "Recording..."
+    Note over Vociferous: Recording indicator appears:<br/>● "Recording..."
     
     User->>Vociferous: Speaks into microphone
     Note over Vociferous: Audio buffered with VAD filtering
     
     User->>Vociferous: Press activation key again
     Vociferous->>Vociferous: Stop recording
-    Note over Vociferous: Status window updates:<br/>✏️ "Transcribing..."
+    Note over Vociferous: Indicator updates:<br/>● "Transcribing..."
     
     Vociferous->>Whisper: Process audio buffer
     Whisper-->>Vociferous: Return transcribed text
     
-    Vociferous->>TargetApp: Inject text via input simulation
-    Note over TargetApp: Text appears as if typed
+    Vociferous->>Clipboard: Copy text to clipboard
+    Vociferous->>Vociferous: Add to history, display in window
+    Note over Vociferous: User pastes with Ctrl+V
     
     Vociferous->>Vociferous: Return to idle
-    Note over Vociferous: Status window disappears
+    Note over Vociferous: Recording indicator disappears
 ```
 
 ### Step-by-Step Workflow
@@ -75,7 +76,8 @@ sequenceDiagram
 **What happens:**
 - GPU libraries configured (if CUDA available)
 - Whisper model loaded into memory (~1-2GB VRAM for distil-large-v3)
-- System tray icon appears (no main window)
+- Main window appears with history sidebar
+- System tray icon appears
 - Hotkey listener starts monitoring keyboard
 - Status: **Idle** (waiting for activation)
 
@@ -84,18 +86,11 @@ sequenceDiagram
 **User action:** Press activation key (default: Right Alt)
 
 **What happens:**
-- Status window appears at bottom-center of screen
-- Shows microphone icon 🎤 and "Recording..." text
+- Recording indicator appears in main window (● Recording)
+- Indicator pulses with opacity animation
 - Audio capture begins (16kHz mono, buffered in queue)
 - VAD (Voice Activity Detection) monitors for speech
 - Status: **Recording**
-
-**Visual feedback:**
-```
-╔═══════════════════════════════╗
-║  🎤  Recording...             ║
-╚═══════════════════════════════╝
-```
 
 #### 3. Speaking
 
@@ -107,7 +102,7 @@ sequenceDiagram
 - Speech frames added to buffer, silence trimmed
 - Recording continues until user stops (or VAD timeout in voice_activity_detection mode)
 
-**Alternative modes:**
+**Recording modes:**
 - **press_to_toggle** (default): Press once to start, again to stop
 - **hold_to_record**: Hold key down, release to stop
 - **voice_activity_detection**: Auto-stops after 900ms silence
@@ -118,17 +113,9 @@ sequenceDiagram
 
 **What happens:**
 - Audio capture stops
-- Status window updates to pencil icon ✏️
-- Text changes to "Transcribing..."
+- Indicator changes to orange "● Transcribing..."
 - Audio buffer sent to Whisper model
 - Status: **Transcribing**
-
-**Visual feedback:**
-```
-╔═══════════════════════════════╗
-║  ✏️  Transcribing...          ║
-╚═══════════════════════════════╝
-```
 
 #### 5. Transcription Processing
 
@@ -144,49 +131,48 @@ sequenceDiagram
 - Long recording (30 seconds): ~2-4 seconds
 - GPU (float16) is ~4x faster than CPU
 
-#### 6. Text Injection
+#### 6. Output to Clipboard
 
 **What happens:**
-- Focus remains on the application you were using
-- Transcribed text injected via configured method:
-  - **pynput** (X11): Simulated keystrokes via XTEST
-  - **dotool/ydotool** (Wayland): Virtual uinput device
-  - **clipboard** (fallback): Text copied for manual paste
-- Text appears as if you typed it character-by-character
+- Transcribed text copied to system clipboard
+- Text displayed in "Current Transcription" panel
+- Entry added to history with timestamp
+- User pastes with Ctrl+V in target application
 
 **Example:**
 ```
 You said: "Hello world, this is a test."
-Result:   Hello world, this is a test. ← appears in focused app
+Clipboard: Hello world, this is a test. 
+History: [10:03 a.m.] Hello world, this is a test.
 ```
 
 #### 7. Return to Idle
 
 **What happens:**
-- Status window fades out and closes
-- System tray icon remains active
+- Recording indicator disappears
+- Main window remains with history visible
 - Hotkey listener continues monitoring
 - Ready for next dictation
 - Status: **Idle**
 
 ### Configuration Options
 
-Users can customize behavior via `~/.config/vociferous/config.yaml`:
+Users can customize behavior via Settings → Preferences or `~/.config/vociferous/config.yaml`:
 
 ```yaml
 recording_options:
   activation_key: alt_right        # Default: Right Alt
   recording_mode: press_to_toggle  # or hold_to_record, voice_activity_detection
   silence_duration: 900            # Auto-stop after 900ms silence (VAD mode)
-  input_backend: evdev             # or pynput, auto
+  input_backend: auto              # or evdev, pynput
 
 model_options:
   model: distil-large-v3           # Fast, accurate distilled model
-  device: cuda                     # or cpu, auto
+  device: auto                     # or cpu, cuda
   compute_type: float16            # or float32, int8
 
 output_options:
-  input_method: pynput             # or ydotool, dotool, clipboard
+  max_history_entries: 1000        # Rotation limit
   add_trailing_space: true         # Space after transcription
 ```
 
@@ -264,6 +250,7 @@ graph TB
     subgraph Core["Core Application"]
         main[main.py<br/>VociferousApp]
         config[utils.py<br/>ConfigManager]
+        history[history_manager.py<br/>HistoryManager]
     end
 
     subgraph Input["Input Handling"]
@@ -278,23 +265,24 @@ graph TB
     end
 
     subgraph Output["Text Output"]
-        simulator[input_simulation.py<br/>InputSimulator]
-        dotool[dotool/ydotool<br/>Wayland]
-        pynput_out[pynput<br/>X11]
+        clipboard[Clipboard<br/>pyperclip/wl-copy]
     end
 
     subgraph UI["User Interface"]
-        status[StatusWindow]
-        base[BaseWindow]
+        mainwin[MainWindow]
+        histwidget[HistoryWidget]
+        settings[SettingsDialog]
+        hotkey[HotkeyWidget]
         tray[System Tray]
     end
 
     run --> main
     main --> config
+    main --> history
     main --> listener
     main --> result
-    main --> simulator
-    main --> status
+    main --> clipboard
+    main --> mainwin
     main --> tray
 
     listener --> evdev
@@ -302,10 +290,10 @@ graph TB
 
     result --> transcribe
 
-    simulator --> dotool
-    simulator --> pynput_out
+    mainwin --> histwidget
+    settings --> hotkey
 
-    status --> base
+    history --> histwidget
 ```
 
 ---
@@ -320,6 +308,7 @@ graph TB
 - Configure LD_LIBRARY_PATH for CUDA libraries (re-exec pattern)
 - Set up Python path for `src/` imports
 - Configure logging
+- Suppress Qt Wayland warnings
 - Launch main application
 
 **Why it exists**: LD_LIBRARY_PATH must be set *before* Python loads CUDA libraries. This requires process re-execution.
@@ -338,6 +327,8 @@ graph TB
 - Handle hotkey callbacks
 - Route signals between components
 - System tray management
+- Clipboard operations
+- Configuration change handling
 
 ```mermaid
 classDiagram
@@ -346,12 +337,14 @@ classDiagram
         +KeyListener key_listener
         +WhisperModel local_model
         +ResultThread result_thread
-        +StatusWindow status_window
-        +InputSimulator input_simulator
+        +MainWindow main_window
+        +HistoryManager history_manager
         +QSystemTrayIcon tray_icon
         +initialize_components()
         +on_activation()
         +on_deactivation()
+        +on_transcription_complete()
+        +_on_config_changed()
         +cleanup()
         +run()
     }
@@ -361,31 +354,40 @@ classDiagram
 
 ### `src/utils.py` - Configuration Management
 
-**Purpose**: Thread-safe, singleton configuration manager with schema validation.
+**Purpose**: Thread-safe, singleton configuration manager with schema validation and change notifications.
 
 **Key Classes**:
-- `ConfigManager` - Singleton configuration manager
+- `ConfigManager(QObject)` - Singleton configuration manager with Qt signals
 
 **Design Patterns**:
 - **Singleton**: One global configuration instance
 - **Double-Checked Locking**: Thread-safe initialization
 - **Schema-Driven**: YAML schema defines valid configuration
+- **Observer (Qt Signals)**: Notify listeners when config changes
 
 ```mermaid
 classDiagram
     class ConfigManager {
         -_instance: ConfigManager$
         -_lock: threading.Lock$
-        -_initialized: bool$
-        +_config: dict
-        +_schema: dict
+        +config: dict
+        +schema: dict
+        +configChanged: pyqtSignal
+        +configReloaded: pyqtSignal
         +initialize()$
+        +instance()$
         +get_config_value(section, key)$
-        +set_config_value(section, key, value)$
+        +set_config_value(value, *keys)$
+        +save_config()$
+        +reload_config()$
         +load_default_config()
         +load_user_config()
     }
 ```
+
+**Signals**:
+- `configChanged(section, key, value)` - Emitted when any config value changes
+- `configReloaded()` - Emitted when config is reloaded from disk
 
 ---
 
@@ -404,6 +406,11 @@ classDiagram
 - **Strategy Pattern**: Swappable input backends
 - **Protocol (Structural Typing)**: Duck-typed backend interface
 - **Observer Pattern**: Callback-based activation notification
+
+**Capture Mode**:
+For hotkey rebinding, `KeyListener` supports capture mode:
+- `enable_capture_mode(callback)` - Divert all input events to callback
+- `disable_capture_mode()` - Resume normal hotkey handling
 
 ```mermaid
 classDiagram
@@ -436,9 +443,14 @@ classDiagram
         +active_backend: InputBackend
         +key_chord: KeyChord
         +callbacks: dict
+        +capture_mode: bool
+        +capture_callback: Callable
         +start()
         +stop()
         +add_callback()
+        +enable_capture_mode()
+        +disable_capture_mode()
+        +update_activation_keys()
     }
 
     InputBackend <|.. EvdevBackend
@@ -526,31 +538,174 @@ sequenceDiagram
 
 ---
 
-### `src/ui/base_window.py` - Custom Window Base
+### `src/history_manager.py` - Transcription History Storage
 
-**Purpose**: Frameless, draggable window with rounded corners.
+**Purpose**: Persistent storage and export of transcription history.
 
 **Key Classes**:
-- `BaseWindow(QMainWindow)` - Custom window base class
+- `HistoryEntry` - Dataclass representing single transcription entry
+- `HistoryManager` - JSONL-based storage and retrieval
 
 **Features**:
-- Translucent background with custom painting
-- Drag-to-move from anywhere
-- Custom title bar with close button
+- JSONL storage at `~/.config/vociferous/history.jsonl`
+- Configurable entry limit with automatic cleanup
+- Export to multiple formats (txt, csv, md)
+- Markdown export with day/time heading hierarchy
+
+```python
+@dataclass(slots=True)
+class HistoryEntry:
+    text: str
+    timestamp: float
+    id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+```
+
+**Export Formats**:
+| Format | Structure |
+|--------|-----------|
+| txt | Plain text, one entry per line |
+| csv | Columns: id, timestamp, text |
+| md | Day headers (##), time headers (###), quoted text |
 
 ---
 
-### `src/ui/status_window.py` - Status Display
+### `src/ui/main_window.py` - Primary Application Window
 
-**Purpose**: Floating indicator showing recording/transcribing state.
+**Purpose**: Full application window with history panel and transcription display.
 
 **Key Classes**:
-- `StatusWindow(BaseWindow)` - Status indicator window
+- `MainWindow(QMainWindow)` - Primary application window
 
 **Features**:
-- Auto-positioning at screen bottom
-- Icon changes based on state
-- Stays on top of other windows
+- Dark theme (#1e1e1e background, #5a9fd4 accents)
+- Horizontal splitter layout (history left, current right)
+- Recording indicator with pulse animation
+- System tray integration
+- Settings dialog access
+
+**Layout Structure**:
+```
+┌────────────────────────────────────────────────────────────┐
+│                        MainWindow                          │
+├──────────────────────────┬─────────────────────────────────┤
+│    History Panel         │      Current Transcription      │
+│  ┌────────────────────┐  │   ┌─────────────────────────┐   │
+│  │   HistoryWidget    │  │   │   Recording Indicator   │   │
+│  │   (collapsible     │  │   │   (pulse animation)     │   │
+│  │    day groups)     │  │   ├─────────────────────────┤   │
+│  ├────────────────────┤  │   │                         │   │
+│  │ Export │ Clear All │  │   │   Transcription Text    │   │
+│  └────────────────────┘  │   │   (read-only display)   │   │
+└──────────────────────────┴───┴─────────────────────────────┘
+```
+
+**Recording States**:
+- `idle` - Ready state, no indicator visible
+- `recording` - Pulsing red indicator
+- `transcribing` - Static indicator
+
+---
+
+### `src/ui/history_widget.py` - Collapsible History List
+
+**Purpose**: Display transcription history with collapsible day grouping.
+
+**Key Classes**:
+- `HistoryWidget(QListWidget)` - Custom list with day headers
+
+**Features**:
+- Day grouping with collapsible headers (▼/▶ indicators)
+- Friendly timestamps ("2 min ago", "Yesterday at 3:45 PM")
+- Right-click context menu (Copy, Re-inject, Delete)
+- Visual nesting with indentation and header styling
+
+**Custom Data Roles**:
+```python
+ROLE_DAY_KEY = Qt.UserRole + 1      # Day identifier for grouping
+ROLE_IS_HEADER = Qt.UserRole + 2    # Boolean: is this a header item?
+```
+
+**Header Toggle Logic**:
+```python
+def _toggle_day_collapse(self, day_key: str) -> None:
+    if day_key in self._collapsed_days:
+        self._collapsed_days.discard(day_key)
+    else:
+        self._collapsed_days.add(day_key)
+    self._update_item_visibility()
+```
+
+---
+
+### `src/ui/settings_dialog.py` - Preferences Dialog
+
+**Purpose**: Schema-driven settings interface.
+
+**Key Classes**:
+- `SettingsDialog(QDialog)` - Tabbed preferences dialog
+
+**Features**:
+- Dynamically built from `config_schema.yaml`
+- Filters internal options (`_internal: true`)
+- Per-type widget generation (bool→checkbox, str→text/combo)
+- Live hotkey rebinding via HotkeyWidget
+
+**Widget Mapping**:
+| Schema Type | Widget |
+|-------------|--------|
+| `bool` | QCheckBox |
+| `str` with `options` | QComboBox |
+| `str` (activation_key) | HotkeyWidget |
+| `str` | QLineEdit |
+| `int` | QSpinBox |
+
+---
+
+### `src/ui/hotkey_widget.py` - Hotkey Capture
+
+**Purpose**: Interactive hotkey input with live capture mode.
+
+**Key Classes**:
+- `HotkeyWidget(QWidget)` - Hotkey display and capture
+
+**Features**:
+- Display current hotkey in readable format
+- "Press to set..." capture mode
+- Validation (requires non-modifier key)
+- Esc to cancel capture
+
+**Capture Flow**:
+```
+┌─────────────┐     click     ┌────────────────┐
+│ Display     │ ─────────────▶│ Capture Mode   │
+│ "Alt+R"     │               │ "Press key..." │
+└─────────────┘               └───────┬────────┘
+                                      │ key press
+                    ┌─────────────────┴─────────────────┐
+                    ▼                                   ▼
+            ┌──────────────┐                   ┌──────────────┐
+            │ Valid combo  │                   │ Invalid/Esc  │
+            │ → Save       │                   │ → Revert     │
+            └──────────────┘                   └──────────────┘
+```
+
+---
+
+### `src/ui/keycode_mapping.py` - KeyCode String Utilities
+
+**Purpose**: Convert between KeyCode enum values and display/config strings.
+
+**Key Functions**:
+- `keycode_to_display_name(keycode)` - Human-readable format
+- `keycode_to_config_name(keycode)` - Config file format
+- `normalize_hotkey_string(string)` - Standardize hotkey representation
+- `keycodes_to_strings(keycodes)` - Convert set of keycodes
+
+**Modifier Ordering**:
+```python
+MODIFIER_ORDER = ['CTRL', 'ALT', 'SHIFT', 'META']
+# Ensures consistent display: "Ctrl+Alt+S" not "Alt+Ctrl+S"
+```
 
 ---
 
@@ -825,6 +980,61 @@ flowchart LR
 3. **Documentation**: Schema serves as config reference
 4. **Type Safety**: Schema defines expected types
 
+### Settings Dialog
+
+Vociferous provides a graphical settings dialog accessible via:
+
+- **Menu bar**: Settings → Preferences...
+- **System tray**: Right-click → Settings...
+
+The dialog is dynamically built from `config_schema.yaml`:
+
+- Each schema section becomes a tab (Model Options, Recording Options, etc.)
+- Widget types are inferred from the schema (`bool` → checkbox, `str` with options → dropdown, etc.)
+- Tooltips display the description from the schema
+- Changes take effect immediately (Apply or OK) and are persisted to `config.yaml`
+
+### Hotkey Rebinding
+
+The activation key can be changed at runtime:
+
+1. Open Settings dialog
+2. Click **Change...** next to **Activation Key**
+3. Press the desired key combination
+4. Dialog validates the hotkey (blocks reserved shortcuts like Alt+F4)
+5. Click **OK** or **Apply** – the new hotkey is active immediately
+
+**Validation rules:**
+
+- Modifier-only hotkeys (e.g., just Ctrl) are rejected
+- Single alphanumeric keys require a modifier
+- Reserved system shortcuts (Alt+F4, Ctrl+Alt+Delete) are blocked
+
+### Live Configuration Updates
+
+When settings change, the application responds without restart:
+
+| Setting | Effect |
+|---------|--------|
+| `activation_key` | KeyListener reloads hotkey immediately |
+| `input_backend` | KeyListener switches backend (evdev ↔ pynput) |
+| `input_method` | InputSimulator reinitializes (e.g., pynput ↔ dotool) |
+| `writing_key_press_delay` | InputSimulator updates typing speed |
+
+**Implementation:**
+
+`ConfigManager` emits a `configChanged(section, key, value)` signal. The main application connects handlers:
+
+```python
+ConfigManager.instance().configChanged.connect(self._on_config_changed)
+
+def _on_config_changed(self, section: str, key: str, value) -> None:
+    if section == 'recording_options' and key == 'activation_key':
+        self.key_listener.update_activation_keys()
+    if section == 'output_options' and key == 'input_method':
+        self.input_simulator.reinitialize()
+```
+
 ---
 
 ## Python 3.12+ Features
@@ -916,27 +1126,45 @@ except (ProcessLookupError, OSError):
 
 ```
 vociferous/
-├── run.py                 # Entry point (GPU setup)
+├── run.py                    # Entry point (GPU setup, logging)
+├── vociferous.sh             # Launcher script
 ├── src/
-│   ├── main.py           # Application orchestrator
-│   ├── utils.py          # ConfigManager singleton
-│   ├── key_listener.py   # Hotkey detection
-│   ├── result_thread.py  # Audio recording & transcription
-│   ├── transcription.py  # Whisper integration
-│   ├── input_simulation.py # Text injection
-│   ├── config_schema.yaml # Configuration schema
+│   ├── main.py               # Application orchestrator
+│   ├── utils.py              # ConfigManager singleton (QObject)
+│   ├── key_listener.py       # Hotkey detection (evdev/pynput)
+│   ├── result_thread.py      # Audio recording & transcription
+│   ├── transcription.py      # Whisper integration
+│   ├── input_simulation.py   # Text injection backends
+│   ├── history_manager.py    # JSONL history storage
+│   ├── config.yaml           # User configuration
+│   ├── config_schema.yaml    # Configuration schema
 │   └── ui/
-│       ├── base_window.py   # Custom frameless window
-│       └── status_window.py # Status indicator
-├── assets/
-│   ├── ww-logo.png
-│   ├── microphone.png
-│   └── pencil.png
+│       ├── main_window.py    # Primary application window
+│       ├── history_widget.py # Collapsible history list
+│       ├── settings_dialog.py# Preferences dialog
+│       ├── hotkey_widget.py  # Hotkey capture widget
+│       └── keycode_mapping.py# KeyCode string utilities
 ├── tests/
-│   └── ...
+│   ├── conftest.py           # Pytest fixtures
+│   ├── test_config.py        # ConfigManager tests
+│   ├── test_key_listener.py  # KeyListener tests
+│   ├── test_input_simulation.py
+│   ├── test_transcription.py
+│   ├── test_wayland_compat.py
+│   └── test_settings.py      # Settings dialog tests
 └── docs/
-    └── ARCHITECTURE.md   # This file
+    └── ARCHITECTURE.md       # This file
 ```
+
+---
+
+## Known Issues
+
+### v1.0.0 Beta
+
+1. **Button padding**: Slight padding issue between Export/Clear All buttons and history pane bottom edge.
+
+2. **Recording indicator font**: The recording indicator text may appear slightly smaller than intended on some display configurations.
 
 ---
 

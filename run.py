@@ -163,6 +163,9 @@ if __name__ == '__main__':
     _configure_logging()
     _preflight_env()
 
+    # Suppress Qt Wayland warnings that can't be fixed (Wayland design limitation)
+    os.environ['QT_LOGGING_RULES'] = 'qt.qpa.wayland=false'
+
     from main import VociferousApp
     app = VociferousApp()
     sys.exit(app.run())

@@ -1,108 +1,90 @@
 # Vociferous - Simple Speech-to-Text Dictation
 # Configuration Schema
+#
+# Settings marked with _internal: true are not shown in the Settings dialog.
+# They are either auto-detected or have sensible defaults that shouldn't change.
 
 # Model options for faster-whisper
 model_options:
   model:
     value: distil-large-v3
     type: str
-    description: "The Whisper model to use. distil-large-v3 is fast and accurate."
-    options:
-      - distil-large-v3
-      - distil-medium.en
-      - distil-small.en
-      - large-v3
-      - large-v2
-      - medium
-      - small
-      - base
-      - tiny
+    description: "Whisper model to use."
+    _internal: true
   device:
-    value: cuda
+    value: auto
     type: str
-    description: "Device to run the model on. Use 'cpu' if cuDNN is not installed."
-    options:
-      - cpu
-      - cuda
-      - auto
+    description: "Device for inference (auto-detected)."
+    _internal: true
   compute_type:
     value: float16
     type: str
-    description: "Compute type for inference. Use float32 for CPU."
+    description: "Compute precision. float16 for GPU, int8 for CPU."
     options:
-      - float32
       - float16
+      - float32
       - int8
   language:
     value: en
     type: str
-    description: "Language code for transcription (ISO-639-1). Use 'en' for English."
+    description: "Language code (ISO-639-1). 'en' for English."
 
 # Recording options
 recording_options:
   activation_key:
     value: alt_right
     type: str
-    description: "The key to toggle recording. Use '+' to combine keys (e.g., 'ctrl+shift+space')."
+    description: "Key to toggle recording."
+  # Internal options - auto-detected or fixed
   input_backend:
-    value: evdev
+    value: auto
     type: str
-    description: "Input backend for hotkey detection. evdev works on Wayland (requires input group), pynput on X11 only."
-    options:
-      - evdev
-      - pynput
-      - auto
+    description: "Input backend (auto-detected)."
+    _internal: true
   recording_mode:
     value: press_to_toggle
     type: str
-    description: "Recording mode. press_to_toggle: press to start, press again to stop and transcribe."
-    options:
-      - press_to_toggle
-      - hold_to_record
-      - voice_activity_detection
-  sound_device:
-    value: null
-    type: str
-    description: "Sound device index. Run 'python -m sounddevice' to list devices. null = default."
+    description: "Recording mode."
+    _internal: true
   sample_rate:
     value: 16000
     type: int
     description: "Audio sample rate in Hz."
+    _internal: true
   silence_duration:
     value: 900
     type: int
-    description: "Silence duration (ms) before auto-stopping in VAD mode."
+    description: "Silence duration (ms) for VAD."
+    _internal: true
   min_duration:
     value: 100
     type: int
-    description: "Minimum recording duration (ms). Shorter recordings are discarded."
+    description: "Minimum recording duration (ms)."
+    _internal: true
 
 # Text output options
 output_options:
-  input_method:
-    value: pynput
-    type: str
-    description: "Method to inject text. pynput works on most systems, ydotool on Wayland."
-    options:
-      - pynput
-      - ydotool
-      - dotool
-  add_trailing_space:
-    value: true
-    type: bool
-    description: "Add a space after transcribed text."
-  writing_key_press_delay:
-    value: 0.005
-    type: float
-    description: "Delay between keystrokes when typing (seconds)."
-
-# Miscellaneous
-misc:
+  max_history_entries:
+    value: 1000
+    type: int
+    description: "Maximum history entries to keep."
   print_to_terminal:
     value: true
     type: bool
     description: "Print status messages to terminal."
-  noise_on_completion:
+  # Internal options
+  add_trailing_space:
+    value: true
+    type: bool
+    description: "Add space after transcription."
+    _internal: true
+    description: "Delay between keystrokes."
+    _internal: true
+
+# Internal state (never shown in settings)
+_internal:
+  auto_submit_warned:
     value: false
     type: bool
-    description: "Play a sound when transcription completes."
+    description: "Whether user has seen auto-submit warning."
+    _internal: true

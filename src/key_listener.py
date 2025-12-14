@@ -51,11 +51,12 @@ Architecture
     │  (Wayland/X11)  │   (X11 only)     │
     └─────────────────┴──────────────────┘
 """
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import Callable, Protocol, runtime_checkable
 import logging
 import threading
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from enum import Enum, auto
+from typing import Protocol, runtime_checkable
 
 from utils import ConfigManager
 
@@ -330,23 +331,27 @@ class InputBackend(Protocol):
     def start(self) -> None:
         """
         Start the input backend.
-        This method should initialize any necessary resources and begin listening for input events.
+
+        Initialize resources and begin listening for input events.
         """
         ...
 
     def stop(self) -> None:
         """
         Stop the input backend.
-        This method should clean up any resources and stop listening for input events.
+
+        Clean up resources and stop listening for input events.
         """
         ...
 
     def on_input_event(self, event: tuple[KeyCode, InputEvent]) -> None:
         """
         Handle an input event.
-        This method is called when an input event is detected.
 
-        :param event (Tuple[KeyCode, InputEvent]): A tuple containing the key code and the type of event.
+        Called when an input event is detected.
+
+        Args:
+            event: Tuple of (KeyCode, InputEvent) for the key and event type.
         """
         ...
 
@@ -447,6 +452,8 @@ class KeyListener:
             "on_activate": [],
             "on_deactivate": []
         }
+        self.capture_mode: bool = False
+        self.capture_callback: Callable[[KeyCode, InputEvent], None] | None = None
         self.load_activation_keys()
         self.initialize_backends()
         self.select_backend_from_config()
@@ -458,7 +465,9 @@ class KeyListener:
 
     def select_backend_from_config(self) -> None:
         """Select the active backend based on configuration."""
-        preferred_backend = ConfigManager.get_config_value('recording_options', 'input_backend')
+        preferred_backend = ConfigManager.get_config_value(
+            'recording_options', 'input_backend'
+        )
 
         match preferred_backend:
             case 'auto':
@@ -468,7 +477,9 @@ class KeyListener:
             case 'pynput':
                 self._try_set_backend(PynputBackend)
             case _:
-                logger.warning(f"Unknown backend '{preferred_backend}'. Falling back to auto.")
+                logger.warning(
+                    f"Unknown backend '{preferred_backend}'. Falling back to auto."
+                )
                 self.select_active_backend()
 
     def _try_set_backend(self, backend_class: type) -> None:
@@ -476,7 +487,8 @@ class KeyListener:
         try:
             self.set_active_backend(backend_class)
         except ValueError:
-            logger.warning(f"Backend '{backend_class.__name__}' unavailable. Using auto.")
+            name = backend_class.__name__
+            logger.warning(f"Backend '{name}' unavailable. Using auto.")
             self.select_active_backend()
 
     def select_active_backend(self) -> None:
@@ -488,7 +500,9 @@ class KeyListener:
 
     def set_active_backend(self, backend_class: type) -> None:
         """Set a specific backend as active."""
-        new_backend = next((b for b in self.backends if isinstance(b, backend_class)), None)
+        new_backend = next(
+            (b for b in self.backends if isinstance(b, backend_class)), None
+        )
         if new_backend:
             if self.active_backend:
                 self.stop()
@@ -516,11 +530,15 @@ class KeyListener:
 
     def load_activation_keys(self) -> None:
         """Load activation keys from configuration."""
-        key_combination = ConfigManager.get_config_value('recording_options', 'activation_key')
+        key_combination = ConfigManager.get_config_value(
+            'recording_options', 'activation_key'
+        )
         keys = self.parse_key_combination(key_combination)
         self.set_activation_keys(keys)
 
-    def parse_key_combination(self, combination_string: str) -> set[KeyCode | frozenset[KeyCode]]:
+    def parse_key_combination(
+        self, combination_string: str
+    ) -> set[KeyCode | frozenset[KeyCode]]:
         """Parse a string representation of key combination into a set of KeyCodes."""
         modifier_map: dict[str, frozenset[KeyCode]] = {
             'CTRL': frozenset({KeyCode.CTRL_LEFT, KeyCode.CTRL_RIGHT}),
@@ -546,11 +564,15 @@ class KeyListener:
         self.key_chord = KeyChord(keys=keys)
 
     def on_input_event(self, event: tuple[KeyCode, InputEvent]) -> None:
-        """Handle input events and trigger callbacks if the key chord becomes active or inactive."""
+        """Handle input events and trigger callbacks for key chord changes."""
         if not self.key_chord or not self.active_backend:
             return
 
         key, event_type = event
+
+        if self.capture_mode and self.capture_callback:
+            self.capture_callback(key, event_type)
+            return
         was_active = self.key_chord.is_active()
         is_active = self.key_chord.update(key, event_type)
 
@@ -559,6 +581,18 @@ class KeyListener:
                 self._trigger_callbacks("on_activate")
             case (True, False):
                 self._trigger_callbacks("on_deactivate")
+
+    def enable_capture_mode(
+        self, callback: Callable[[KeyCode, InputEvent], None]
+    ) -> None:
+        """Divert input events to a capture handler (used for hotkey rebinding)."""
+        self.capture_mode = True
+        self.capture_callback = callback
+
+    def disable_capture_mode(self) -> None:
+        """Exit capture mode and resume normal hotkey handling."""
+        self.capture_mode = False
+        self.capture_callback = None
 
     def add_callback(self, event: str, callback: Callable[[], None]) -> None:
         """Add a callback function for a specific event."""
@@ -630,7 +664,7 @@ class EvdevBackend:
     def is_available(cls) -> bool:
         """Check if the evdev library is available."""
         try:
-            import evdev  # noqa: F401
+            import evdev
             return True
         except ImportError:
             return False
@@ -728,7 +762,7 @@ class EvdevBackend:
                     device.close()
 
     def _read_device_events(self, device) -> bool:
-        """Read and process events from a single device. Returns False if device should be removed."""
+        """Read events from device. Returns False if device should be removed."""
         try:
             for event in device.read():
                 if event.type == self.evdev.ecodes.EV_KEY:
@@ -738,17 +772,17 @@ class EvdevBackend:
             return self._handle_device_error(device, e)
 
     def _handle_device_error(self, device, error: Exception) -> bool:
-        """Handle errors that occur when reading from a device. Returns False if device should be removed."""
+        """Handle device read errors. Returns False if device should be removed."""
         import errno
 
         match error:
             case BlockingIOError() if error.errno == errno.EAGAIN:
                 return True  # Non-blocking IO expected, device OK
             case OSError() if error.errno in (errno.EBADF, errno.ENODEV):
-                logger.info(f"Device {device.path} no longer available. Removing.")
+                logger.debug(f"Device {device.path} no longer available. Removing.")
                 return False
             case _:
-                logger.warning(f"Unexpected error reading device: {error}")
+                logger.debug(f"Error reading device: {error}")
                 return True  # Keep device, might be transient
 
     def _handle_input_event(self, event) -> None:
@@ -1027,7 +1061,7 @@ class PynputBackend:
     def is_available(cls) -> bool:
         """Check if pynput library is available."""
         try:
-            import pynput  # noqa: F401
+            import pynput
             return True
         except ImportError:
             return False
