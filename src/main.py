@@ -1,100 +1,8 @@
 """
-Vociferous - Simple Speech-to-Text Dictation Application.
+Vociferous - Main orchestration module.
 
-This is the main orchestration module that ties together all components:
-key listening, audio recording, transcription, and text injection.
-
-Application Architecture:
--------------------------
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                      VociferousApp (QObject)                    │
-├─────────────────────────────────────────────────────────────────┤
-│                                                                 │
-│  ┌──────────────┐    callback    ┌─────────────────────┐        │
-│  │ KeyListener  │ ──────────────▶│ on_activation()     │        │
-│  │ (evdev/      │                │ on_deactivation()   │        │
-│  │  pynput)     │                └──────────┬──────────┘        │
-│  └──────────────┘                           │                   │
-│                                             ▼                   │
-│                              ┌──────────────────────────┐       │
-│                              │ ResultThread (QThread)   │       │
-│                              │ • Record audio           │       │
-│                              │ • Run transcription      │       │
-│                              └──────────┬───────────────┘       │
-│                                         │                       │
-│                    Qt Signals           │                       │
-│         ┌───────────────────────────────┼───────────────┐       │
-│         │                               │               │       │
-│         ▼                               ▼               ▼       │
-│  ┌──────────────┐              ┌──────────────┐ ┌──────────────┐│
-│  │ MainWindow   │              │InputSimulator│ │  Tray Icon   ││
-│  │(UI + history)│              │(text inject) │ │  (status)    ││
-│  └──────────────┘              └──────────────┘ └──────────────┘│
-└─────────────────────────────────────────────────────────────────┘
-```
-
-PyQt5 Concepts Demonstrated:
-----------------------------
-
-**1. QApplication and Event Loop**
-The app runs an event loop (`app.exec_()`) that processes UI events,
-timers, and signal/slot invocations. Everything is event-driven.
-
-**2. Signal/Slot Pattern**
-Qt's implementation of the Observer pattern. Signals are emitted by
-objects, slots are methods that receive them. Key benefits:
-- Type-safe (argument types are checked)
-- Thread-safe (cross-thread signals are queued automatically)
-- Loose coupling (emitter doesn't know about receivers)
-
-Example from this module:
-```python
-self.result_thread.resultSignal.connect(self.on_transcription_complete)
-#                  ↑ signal                    ↑ slot
-```
-
-**3. QThread for Background Work**
-ResultThread runs audio recording and transcription off the main thread.
-This keeps the UI responsive. Signals safely cross the thread boundary.
-
-**4. System Tray Integration**
-QSystemTrayIcon provides the tray icon and right-click menu. Combined
-with `setQuitOnLastWindowClosed(False)`, the app runs headlessly.
-
-**5. Resource Management**
-`deleteLater()` schedules object deletion on the event loop, preventing
-crashes from deleting objects that still have pending signals.
-
-Thread Connection Management:
------------------------------
-This module tracks signal connections in `_thread_connections` list.
-This allows proper cleanup when threads finish or the app exits:
-
-```python
-for signal, slot in self._thread_connections:
-    signal.connect(slot)  # Connect
-    # ... later ...
-    signal.disconnect(slot)  # Clean disconnect
-```
-
-Without explicit disconnection, you can get:
-- Memory leaks (slots keep objects alive)
-- Crashes (signals delivered to deleted objects)
-- Unexpected behavior (old handlers still firing)
-
-Recording Modes:
-----------------
-- `press_to_toggle`: Press once to start, press again to stop
-- `hold_to_record`: Hold key to record, release to stop
-
-The mode affects which callback (on_activation vs on_deactivation)
-triggers the stop_recording action.
-
-Python 3.12+ Features:
-----------------------
-- Match/case for status text selection
-- `list[tuple]` generic type hints without imports
+Coordinates KeyListener → ResultThread → clipboard output via Qt signals.
+Tracks signal connections in _thread_connections for proper cleanup.
 """
 import logging
 import os
@@ -129,41 +37,7 @@ os.environ.setdefault("QT_WAYLAND_DISABLE_WINDOWDECORATION", "1")
 
 
 class VociferousApp(QObject):
-    """
-    Main application orchestrator for Vociferous speech-to-text.
-
-    This class follows the Mediator pattern - it coordinates communication
-    between components (KeyListener, ResultThread, MainWindow, etc.)
-    without them knowing about each other.
-
-    Lifecycle:
-    ----------
-    1. __init__: Create QApplication, initialize ConfigManager
-    2. initialize_components: Load model, create UI, set up listeners
-    3. run: Enter Qt event loop (blocking)
-    4. cleanup: Stop threads, release resources
-    5. exit_app: Quit event loop
-
-    Why inherit from QObject?
-    -------------------------
-    QObject provides:
-    - Signal/slot mechanism (not used here but available)
-    - Parent-child ownership (automatic cleanup)
-    - deleteLater() for safe deferred deletion
-    - Thread affinity (objects belong to threads)
-
-    Even though we don't define signals here, inheriting QObject makes
-    this class a proper Qt citizen that can participate in the ecosystem.
-
-    Attributes:
-        app: QApplication instance (singleton, one per process)
-        key_listener: Hotkey detection (evdev/pynput backend)
-        local_model: Loaded Whisper model (kept in memory for fast inference)
-        result_thread: Current recording/transcription thread (or None)
-        main_window: UI showing recording/transcribing state
-        tray_icon: System tray presence
-        _thread_connections: Tracked signal connections for cleanup
-    """
+    """Main application orchestrator coordinating all components."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -187,22 +61,7 @@ class VociferousApp(QObject):
         self.initialize_components()
 
     def initialize_components(self) -> None:
-        """
-        Initialize all application components in dependency order.
-
-        Initialization order matters:
-        1. KeyListener - needs config loaded (done in __init__)
-        2. Whisper model - slow, loaded early to avoid first-use delay
-        3. MainWindow - needs Qt app running
-        4. Tray icon
-        5. Start listening - only after everything else is ready
-
-        Why load model eagerly?
-        -----------------------
-        Model loading takes 2-10 seconds depending on size and device.
-        Loading it at startup means the first dictation is instant.
-        The tradeoff is slower startup, but better UX during use.
-        """
+        """Initialize components in dependency order: listener, model, UI, tray."""
         ConfigManager.console_print("Initializing Vociferous...")
 
         # Key listener for hotkey detection
@@ -251,22 +110,7 @@ class VociferousApp(QObject):
         ConfigManager.console_print(f"Ready! Press '{activation_key}' to start.")
 
     def create_tray_icon(self) -> None:
-        """
-        Create the system tray icon with context menu.
-
-        System Tray Pattern:
-        --------------------
-        For "headless" apps that run in background:
-        1. setQuitOnLastWindowClosed(False) - don't exit when windows close
-        2. Create QSystemTrayIcon with icon
-        3. Attach QMenu for right-click actions
-        4. show() to make visible
-
-        The tray icon serves as:
-        - Visual indicator that the app is running
-        - Status display (tooltip updates with state)
-        - Exit point (right-click → Exit)
-        """
+        """Create system tray icon with context menu."""
         icon = self._build_tray_icon()
         self.tray_icon = QSystemTrayIcon(icon, self.app)
 
@@ -400,38 +244,7 @@ class VociferousApp(QObject):
             self.result_thread.stop_recording()
 
     def start_result_thread(self):
-        """
-        Start a new recording and transcription thread.
-
-        Thread Lifecycle:
-        -----------------
-        1. Check if thread already running (prevent double-start)
-        2. Disconnect previous signals (prevent dangling connections)
-        3. Create new ResultThread with loaded model
-        4. Connect signals to UI and processing slots
-        5. Connect finished signal for auto-cleanup
-        6. Start the thread
-
-        Signal Connection Pattern:
-        --------------------------
-        We store connections in `_thread_connections` list:
-        ```python
-        self._thread_connections = [
-            (signal, slot),
-            (signal, slot),
-            ...
-        ]
-        ```
-
-        This pattern allows:
-        - Bulk connect/disconnect operations
-        - Proper cleanup when thread finishes
-        - Prevention of "zombie" connections
-
-        The `finished.connect(self._on_thread_finished)` sets up auto-cleanup:
-        when the thread completes, we disconnect all signals and schedule
-        the thread object for deletion.
-        """
+        """Start recording/transcription thread with tracked signal connections."""
         if self.result_thread and self.result_thread.isRunning():
             return
 
@@ -481,23 +294,7 @@ class VociferousApp(QObject):
             self.result_thread.stop()
 
     def update_tray_status(self, status: str) -> None:
-        """
-        Update tray icon tooltip based on current status.
-
-        Uses match/case for clean status-to-text mapping:
-        ```python
-        match status:
-            case 'recording':    text = '...Recording...'
-            case 'transcribing': text = '...Transcribing...'
-            case _:              text = '...Ready'
-        ```
-
-        The wildcard `_` case handles any unexpected status values,
-        providing a safe default rather than raising an error.
-
-        Args:
-            status: Status string ('recording', 'transcribing', 'error', etc.)
-        """
+        """Update tray icon tooltip based on current status."""
         match status:
             case 'recording':
                 text = 'Vociferous - Recording...'
@@ -511,18 +308,7 @@ class VociferousApp(QObject):
         self.tray_icon.setToolTip(text)
 
     def on_transcription_complete(self, result: str) -> None:
-        """
-        Handle completed transcription - always copies to clipboard.
-
-        Output Pipeline:
-        1. Add to history and display in window
-        2. Copy to clipboard (always enabled)
-
-        User can then manually paste with Ctrl+V where needed.
-
-        Args:
-            result: Transcribed text (may be empty string)
-        """
+        """Handle completed transcription: add to history and copy to clipboard."""
         if not result:
             return
 

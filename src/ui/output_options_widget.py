@@ -1,33 +1,8 @@
 """
 Cascading output options widget for transcription output control.
 
-This widget provides a hierarchical checkbox interface for controlling
-how transcriptions are output:
-
-    ☑ Copy to clipboard
-      ☑ Auto-inject text into active window
-        ☐ Auto-submit with Enter key ⚠️
-
-The cascade pattern uses setEnabled(False) on dependent checkboxes,
-making the dependency relationship visually clear (grayed out = unavailable).
-
-Design Decisions:
------------------
-1. **setEnabled() vs always-enabled + tooltip**: Using setEnabled(False)
-   because grayed-out state immediately communicates "not available" and
-   is the standard pattern used by Qt and most GUI applications.
-
-2. **Indentation for hierarchy**: 20px per level is standard and readable,
-   matches file explorers and settings dialogs universally.
-
-3. **Auto-submit warning**: Two-layer safety:
-   - Persistent warning label (visible when enabled)
-   - First-time confirmation dialog (remembers user choice)
-
-Python 3.12+ Features:
-----------------------
-- Match/case for state handling
-- Union type hints with |
+Provides hierarchical checkbox interface: Copy → Auto-inject → Auto-submit.
+Child options are disabled when parent is unchecked.
 """
 from PyQt5.QtCore import Qt, pyqtSignal
 from PyQt5.QtWidgets import (
@@ -45,13 +20,7 @@ class OutputOptionsWidget(QWidget):
     """
     Cascading checkbox hierarchy for output options.
 
-    Hierarchy:
-    - Copy to clipboard (parent)
-      - Auto-inject text (child, requires clipboard)
-        - Auto-submit with Enter (grandchild, requires inject)
-
-    Signals:
-        optionsChanged: Emitted when any option changes
+    Hierarchy: Copy → Auto-inject → Auto-submit.
     """
 
     optionsChanged = pyqtSignal()

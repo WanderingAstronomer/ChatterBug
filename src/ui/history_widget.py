@@ -1,22 +1,8 @@
 """
 Transcription history display widget.
 
-This widget displays a scrollable list of past transcriptions with:
-- Timestamp + truncated preview for each entry
-- Single-click loads into editor for editing
-- Double-click copies to clipboard
-- Right-click context menu: Copy, Delete
-
-Display Format:
----------------
-Each item shows: [HH:MM:SS] Preview text truncated to 80 chars...
-
-The full text is stored in Qt.UserRole and displayed in tooltip.
-
-Python 3.12+ Features:
-----------------------
-- Match/case for keyboard event handling
-- Union type hints with |
+Displays scrollable list of past transcriptions with day grouping.
+Single-click loads into editor, double-click copies to clipboard.
 """
 import subprocess
 from contextlib import suppress
@@ -147,16 +133,8 @@ class HistoryWidget(QListWidget):
     """
     Display transcription history with context menu.
 
-    Design:
-    -------
-    - Each item shows timestamp + truncated text
-    - Full text stored in Qt.UserRole
-    - Double-click to copy
-    - Right-click for context menu
-    - Day headers are collapsible (click to toggle)
-
-    Signals:
-        entrySelected: Emit text and ISO timestamp for editing in the pane
+    Day headers are collapsible (click to toggle).
+    Single-click loads entry into editor, double-click copies.
     """
 
     entrySelected = pyqtSignal(str, str)

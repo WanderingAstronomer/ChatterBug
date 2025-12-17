@@ -1,40 +1,8 @@
 """
-Configuration Management Module
-================================
+Configuration Management Module.
 
-This module implements a thread-safe singleton ConfigManager that handles all
-application configuration using modern Python patterns (3.12+).
-
-Design Patterns Used
---------------------
-1. **Singleton Pattern**: Only one ConfigManager instance exists application-wide.
-   This ensures consistent configuration state across all modules.
-
-2. **Double-Checked Locking**: Thread-safe initialization without performance penalty.
-   The lock is only acquired when the instance doesn't exist yet.
-
-3. **Schema-Driven Configuration**: Configuration structure is defined in YAML schema,
-   providing validation, documentation, and default values in one place.
-
-Key Python 3.12+ Features Demonstrated
---------------------------------------
-- `match/case` statements for structural pattern matching (PEP 634)
-- Modern type hints: `dict[str, Any]`, `Path | str | None` union syntax
-- `pathlib.Path` for all file operations (cleaner than os.path)
-- `contextlib.suppress` for cleaner exception handling
-
-Why This Approach?
-------------------
-- **Thread Safety**: Multiple threads (UI, recording, transcription) access config
-- **Hot Reloading**: Config can be reloaded without restarting the application
-- **Schema Validation**: YAML schema provides self-documenting configuration
-- **Separation of Concerns**: Config management is isolated from business logic
-
-Example Usage
--------------
-    >>> ConfigManager.initialize()
-    >>> model = ConfigManager.get_config_value('model_options', 'model')
-    >>> ConfigManager.set_config_value('tiny', 'model_options', 'model')
+Thread-safe singleton ConfigManager using double-checked locking.
+Schema-driven configuration with YAML validation and hot reloading.
 """
 import logging
 import threading
@@ -45,31 +13,14 @@ from typing import Any
 import yaml
 from PyQt5.QtCore import QObject, pyqtSignal
 
-# Module-level constants define file locations used throughout the application.
-# Using Path objects (not strings) enables cross-platform compatibility and
-# provides a rich API for path manipulation (parent, /, exists, read_text, etc.)
 _DEFAULT_CONFIG_PATH = Path('src') / 'config.yaml'
 _SCHEMA_FILENAME = 'config_schema.yaml'
 
-# Each module gets its own logger using __name__ (the module's dotted path).
-# This enables fine-grained log filtering: logging.getLogger('utils').setLevel(DEBUG)
 logger = logging.getLogger(__name__)
 
 
 class ConfigManager(QObject):
-    """
-    Thread-safe singleton configuration manager.
-
-    This class uses the Singleton pattern to ensure exactly one configuration
-    instance exists. The double-checked locking pattern provides thread safety
-    without the overhead of acquiring a lock on every access.
-
-    Attributes:
-        _instance: The singleton instance (class-level, shared by all)
-        _lock: Threading lock for safe initialization
-        config: The current configuration dictionary
-        schema: The configuration schema (defines structure and defaults)
-    """
+    """Thread-safe singleton configuration manager with PyQt signals."""
 
     # Class-level attributes shared by all instances (though only one exists)
     # The type hint 'ConfigManager | None' uses Python 3.10+ union syntax
@@ -88,23 +39,7 @@ class ConfigManager(QObject):
 
     @classmethod
     def initialize(cls, schema_path: Path | str | None = None) -> None:
-        """
-        Initialize the ConfigManager singleton.
-
-        This method uses the "double-checked locking" pattern for thread safety:
-        1. First check: Quick return if already initialized (no lock overhead)
-        2. Acquire lock: Only one thread can enter the critical section
-        3. Second check: Another thread might have initialized while we waited
-        4. Create instance: Safe to create since we hold the lock
-
-        This pattern is essential in multi-threaded applications where multiple
-        threads might try to initialize the config simultaneously (e.g., during
-        startup when UI thread and worker threads race to access config).
-
-        Args:
-            schema_path: Optional path to the configuration schema YAML file.
-                         If None, uses the default schema in the src/ directory.
-        """
+        """Initialize the ConfigManager singleton with double-checked locking."""
         if cls._instance is None:
             with cls._lock:
                 # Double-check pattern for thread safety
@@ -131,30 +66,7 @@ class ConfigManager(QObject):
 
     @classmethod
     def get_config_section(cls, *keys: str) -> dict[str, Any]:
-        """
-        Navigate through nested config dictionaries to get a section.
-
-        Uses Python 3.10+ `match/case` for structural pattern matching.
-        The pattern `case dict() if key in section:` matches only if:
-        1. `section` is a dictionary (structural match)
-        2. AND the `key` exists in that dictionary (guard condition)
-
-        This is more readable than the equivalent if/isinstance chain:
-            if isinstance(section, dict) and key in section:
-                section = section[key]
-            else:
-                return {}
-
-        Args:
-            *keys: Sequence of keys to traverse (e.g., 'model_options', 'model')
-
-        Returns:
-            The configuration section dict, or empty dict if path doesn't exist.
-
-        Example:
-            >>> ConfigManager.get_config_section('model_options')
-            {'model': 'distil-large-v3', 'device': 'cuda', ...}
-        """
+        """Navigate through nested config dictionaries to get a section."""
         if cls._instance is None:
             raise RuntimeError("ConfigManager not initialized")
 
@@ -184,22 +96,7 @@ class ConfigManager(QObject):
 
     @classmethod
     def set_config_value(cls, value: Any, *keys: str) -> None:
-        """
-        Set a nested configuration value, creating intermediate dicts as needed.
-
-        The lock ensures atomic updates - no other thread can read a partially
-        updated config. The `match config.get(key)` pattern uses "as" binding:
-        `case dict() as nested:` both matches the pattern AND binds the matched
-        value to `nested` for use in the case body.
-
-        Args:
-            value: The value to set
-            *keys: Path to the config key (e.g., 'model_options', 'model')
-
-        Raises:
-            RuntimeError: If ConfigManager not initialized
-            ValueError: If no keys provided
-        """
+        """Set a nested configuration value, creating intermediate dicts as needed."""
         if cls._instance is None:
             raise RuntimeError("ConfigManager not initialized")
         if not keys:
@@ -233,24 +130,7 @@ class ConfigManager(QObject):
         return yaml.safe_load(schema_path.read_text())
 
     def load_default_config(self) -> dict[str, Any]:
-        """
-        Extract default values from the schema using recursive pattern matching.
-
-        The schema format is:
-            category:
-              setting:
-                value: "default"  <- This is what we extract
-                type: str
-                description: "..."
-
-        The `match` statement handles three cases:
-        1. `{'value': val}` - Leaf node with explicit default value
-        2. `dict()` - Nested structure, recurse into children
-        3. `_` - Any other type, return as-is (shouldn't happen in valid schema)
-
-        This is a great example of how match/case simplifies recursive data
-        structure processing that would otherwise require nested if/elif chains.
-        """
+        """Extract default values from the schema using recursive pattern matching."""
         def extract_value(item: Any) -> Any:
             match item:
                 case {'value': val}:
@@ -266,26 +146,7 @@ class ConfigManager(QObject):
         }
 
     def load_user_config(self, config_path: Path | str | None = None) -> None:
-        """
-        Load and merge user configuration with defaults (deep merge).
-
-        Uses `contextlib.suppress` for cleaner exception handling:
-            with suppress(yaml.YAMLError):
-                ...
-        Is equivalent to:
-            try:
-                ...
-            except yaml.YAMLError:
-                pass
-
-        The deep_update function uses tuple pattern matching to decide
-        whether to merge recursively or overwrite:
-        - `(dict(), dict())` - Both are dicts: merge recursively
-        - `_` - Anything else: overwrite the source value
-
-        Args:
-            config_path: Path to user's config.yaml (optional)
-        """
+        """Load and merge user configuration with defaults (deep merge)."""
         path = Path(config_path) if config_path else _DEFAULT_CONFIG_PATH
 
         def deep_update(source: dict, overrides: dict) -> None:

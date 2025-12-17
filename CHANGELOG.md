@@ -2,6 +2,30 @@
 
 ---
 
+# v1.1.1 Beta - Documentation Refresh
+
+**Date:** December 2025  
+**Status:** Beta
+
+---
+
+## Summary
+
+Documentation-focused update: clarified current behavior (press-to-toggle only), aligned wiki with ARCHITECTURE.md as source of truth, and fixed mermaid diagrams.
+
+## Changes
+
+- **Wiki refresh**: Replaced Recording page to reflect single supported mode (press-to-toggle); updated Text Output, Config Options, Keycodes Reference, Hotkey System, Backend Architecture, Threading Model, and Home navigation links.
+- **Architecture link-out**: Added guidance to treat ARCHITECTURE.md as canonical; wiki pages now act as concise summaries.
+- **Mermaid fixes**: Corrected High-Level Architecture diagram label (main.py/VociferousApp) and refreshed data-flow/threading diagrams in wiki to render properly.
+- **Config clarification**: Documented `recording_mode` as fixed to `press_to_toggle`; noted default Alt hotkey captures both Alt keys (known limitation).
+
+## Notes
+
+- No functional code changes; this release is purely documentation and clarity improvements.
+
+---
+
 # v1.1.0 Beta - Custom Title Bar & History Enhancements
 
 **Date:** December 2025  

@@ -1,35 +1,8 @@
 """
 Transcription history management with JSONL storage.
 
-This module provides persistent storage for transcription history using
-JSON Lines format. Each transcription is stored as a single JSON object
-per line, enabling efficient append operations and easy human inspection.
-
-Storage Format:
----------------
-File: ~/.config/vociferous/history.jsonl
-
-Each line:
-    {"timestamp": "2025-12-14T15:30:45.123456", "text": "...", "duration_ms": 1234}
-
-Why JSONL?
-----------
-- **Append-only**: Thread-safe writes without locking entire file
-- **Human-readable**: Users can inspect/edit with any text editor
-- **Streaming**: Can read large files line-by-line without loading all
-- **Upgrade path**: Easy migration to SQLite if search is needed later
-
-Performance Characteristics:
-----------------------------
-- 1000 entries: ~150KB, ~20ms read (acceptable)
-- 10000 entries: ~1.5MB, ~200ms read (noticeable)
-- Rotation keeps file size bounded
-
-Python 3.12+ Features:
-----------------------
-- Dataclass with slots for memory efficiency
-- Match/case for export format selection
-- Pathlib throughout
+Each transcription is stored as a JSON object per line in ~/.config/vociferous/history.jsonl.
+Supports append-only writes, rotation, and export.
 """
 import csv
 import json
@@ -49,19 +22,7 @@ HISTORY_FILE = HISTORY_DIR / 'history.jsonl'
 
 @dataclass(slots=True)
 class HistoryEntry:
-    """
-    Single transcription history entry.
-
-    Designed for future SQLite compatibility:
-    - All fields map directly to SQL columns
-    - timestamp is ISO8601 (sortable string)
-    - duration_ms is integer (efficient storage)
-
-    Attributes:
-        timestamp: ISO8601 format string
-        text: The transcribed text
-        duration_ms: Recording duration in milliseconds
-    """
+    """Single transcription history entry with timestamp, text, and duration."""
     timestamp: str
     text: str
     duration_ms: int
@@ -77,12 +38,7 @@ class HistoryEntry:
         return json.dumps(asdict(self), ensure_ascii=False)
 
     def to_display_string(self, max_length: int = 80) -> str:
-        """
-        Format for display in list widget.
-
-        Shows timestamp (HH:MM:SS) followed by truncated text preview.
-        Full text available via tooltip or Qt.UserRole data.
-        """
+        """Format for display in list widget: [HH:MM:SS] text preview..."""
         timestamp_short = self.timestamp.split('T')[1][:8]  # HH:MM:SS
         if len(self.text) > max_length:
             text_preview = self.text[:max_length] + '...'
@@ -95,24 +51,8 @@ class HistoryManager:
     """
     Manages transcription history with JSONL storage.
 
-    Design Goals:
-    -------------
-    - Simple append-only writes (thread-safe)
-    - Efficient for < 1000 entries
-    - Easy to upgrade to SQLite later
-    - Export-friendly format
-
-    Thread Safety:
-    --------------
-    Append operations are atomic on most filesystems. The file is opened
-    in append mode, written, and closed in a single operation. This makes
-    concurrent writes from multiple threads safe without explicit locking.
-
-    Rotation:
-    ---------
-    When entries exceed max_history_entries (default 1000), oldest entries
-    are removed to keep file size bounded. This happens after each write
-    to prevent unbounded growth.
+    Append operations are atomic on most filesystems.
+    Rotation keeps file size bounded when entries exceed max_history_entries.
     """
 
     def __init__(self, history_file: Path | None = None) -> None:
@@ -125,18 +65,7 @@ class HistoryManager:
             self.history_file.touch()
 
     def add_entry(self, text: str, duration_ms: int = 0) -> HistoryEntry:
-        """
-        Add new transcription to history.
-
-        Thread-safe: Append operation is atomic on most filesystems.
-
-        Args:
-            text: Transcribed text
-            duration_ms: Recording duration in milliseconds
-
-        Returns:
-            Created HistoryEntry
-        """
+        """Add new transcription to history. Returns the created entry."""
         entry = HistoryEntry(
             timestamp=datetime.now().isoformat(),
             text=text,
@@ -159,15 +88,7 @@ class HistoryManager:
         return entry
 
     def get_recent(self, limit: int = 100) -> list[HistoryEntry]:
-        """
-        Get most recent entries.
-
-        Args:
-            limit: Maximum number of entries to return
-
-        Returns:
-            List of HistoryEntry, newest first
-        """
+        """Get most recent entries (newest first)."""
         entries = []
 
         try:
@@ -196,16 +117,7 @@ class HistoryManager:
         return entries
 
     def update_entry(self, timestamp: str, new_text: str) -> bool:
-        """
-        Update an existing entry with new text.
-
-        Args:
-            timestamp: ISO timestamp of the entry to update
-            new_text: New transcribed text
-
-        Returns:
-            True if updated, False if entry not found
-        """
+        """Update an existing entry's text by timestamp. Returns success."""
         try:
             entries = []
             found = False
@@ -289,16 +201,7 @@ class HistoryManager:
             logger.error(f"Failed to clear history: {e}")
 
     def export_to_file(self, export_path: Path, format: str = 'txt') -> bool:
-        """
-        Export history to file.
-
-        Args:
-            export_path: Destination file path
-            format: Export format ('txt', 'csv', 'md')
-
-        Returns:
-            True if successful
-        """
+        """Export history to file (txt, csv, or md format)."""
         entries = self.get_recent(limit=10000)  # Export all
 
         try:
@@ -381,7 +284,7 @@ class HistoryManager:
             logger.warning(f"History rotation failed: {e}")
 
     def _ordinal_suffix(self, n: int) -> str:
-        """Return English ordinal suffix for a day (st/nd/rd/th)."""
+        """Return ordinal suffix (st/nd/rd/th)."""
         if 11 <= (n % 100) <= 13:
             return "th"
         match n % 10:

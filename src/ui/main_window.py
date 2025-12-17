@@ -1,36 +1,8 @@
 """
 Main application window for Vociferous.
 
-This window provides:
-- Transcription history sidebar (left panel)
-- Current transcription display (right panel)
-- Output options checkboxes (bottom)
-- Menu bar with File, View, History, Settings, Help
-
-Layout:
--------
-┌──────────────────────────────────────────────────────┐
-│ File  View  History  Settings  Help                  │
-├──────────────────────────────────────────────────────┤
-│ ┌──History────────┐ │ ┌──Current Transcription────┐ │
-│ │ [15:30] Hello...│ │ │                           │ │
-│ │ [15:28] Test... │ │ │  Full transcription text  │ │
-│ │ ...             │ │ │                           │ │
-│ └─────────────────┘ │ └───────────────────────────┘ │
-├──────────────────────────────────────────────────────┤
-│ ☐ Copy to clipboard                                  │
-│   ☐ Auto-inject    ☐ Auto-submit ⚠️                  │
-└──────────────────────────────────────────────────────┘
-
-Responsive Design:
-------------------
-- Width >= 700px: Side-by-side (horizontal splitter)
-- Width < 700px: Stacked (vertical splitter)
-
-Python 3.12+ Features:
-----------------------
-- Match/case for status handling and keyboard events
-- Union type hints with |
+Provides transcription history sidebar, current transcription display,
+and output options. Responsive layout adapts to window size.
 """
 
 from pathlib import Path

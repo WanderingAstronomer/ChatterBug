@@ -1,26 +1,39 @@
 # Vociferous
 
-A modern Python 3.12+ speech-to-text dictation application for Linux using OpenAI's Whisper model via faster-whisper.
+Vociferous is a modern **Python 3.12+** speech‑to‑text dictation application for Linux built on **OpenAI Whisper** via **faster‑whisper (CTranslate2)**.
+
+It is designed for fast, local dictation with a clipboard‑first workflow and minimal friction.
+
+---
 
 ## Main Window
 
-![Main Window](docs/images/Main_Window.png)
+The application is split into **two static interaction panes**:
 
+- **Left pane**: Transcription history
+- **Right pane**: Current transcription
+
+There is **no dedicated Start/Stop button** in the current version. Recording is controlled entirely via a hotkey. This will be added in a future update, along with additional UI refinements. A roadmap will be published soon outlining planned features and improvements!
+
+[![Vociferous Main Window](docs/images/main_window.png)](docs/images/main_window.png)
+
+---
 
 ## Features
 
-- **Fast transcription** using faster-whisper (CTranslate2 backend)
-- **Custom frameless window** with unified title bar, menu, and window controls
-- **Hotkey activation** with press-to-toggle recording mode
-- **Voice Activity Detection** automatically stops when you stop speaking
-- **Transcription history** with JSONL storage, file watching, and export (txt, csv, markdown)
-- **Collapsible day grouping** with auto-collapse for past days
-- **Editable transcriptions** - single-click to load, edit, and save
-- **Delete with persistence** - Delete key removes entries from UI and storage
-- **Cancel recording** - abort mid-recording without transcribing
-- **Dark theme UI** with Wayland-native drag support and system tray integration
-- **Live settings** with immediate effect (no restart needed)
-- **Clipboard workflow** - transcriptions auto-copy for easy paste
+- Fast transcription using faster‑whisper (CTranslate2 backend)
+- **GPU acceleration (NVIDIA CUDA)** with **CPU‑only fallback supported**
+- PyQt5 GUI (**planned upgrade to PyQt6**)
+- Hotkey‑based, press‑to‑toggle recording
+- Voice Activity Detection (VAD)
+- Clipboard‑first workflow (no input injection)
+- Persistent transcription history (JSONL)
+- Editable history entries
+- Export history to TXT / CSV / Markdown
+- Dark‑themed Linux‑native UI with system tray integration
+- Live‑reloadable settings (no restart required)
+
+---
 
 ## Installation
 
@@ -33,152 +46,146 @@ chmod +x scripts/install.sh
 
 ### Manual Installation
 
-1. Create and activate virtual environment:
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-2. Install dependencies:
-```bash
 pip install -r requirements.txt
 ```
 
-### System Dependencies (Linux)
+### System Dependencies
 
-For Wayland support:
+**Wayland**
+
 ```bash
-# Ubuntu/Debian
 sudo apt install wl-clipboard
-
-# Add user to input group for evdev backend
 sudo usermod -a -G input $USER
-# Log out and back in for group changes to take effect
 ```
 
-For X11 support:
+(Log out and back in after group change)
+
+**X11**
+
 ```bash
 sudo apt install python3-xlib
 ```
 
-### Dependencies Overview
+---
 
-**Core Dependencies:**
-- `faster-whisper` - CTranslate2-based Whisper (4x faster)
-- `ctranslate2` - Optimized transformer inference
-- `PyQt5` - GUI framework
-- `sounddevice` - Audio capture
-- `webrtcvad` - Voice activity detection
-- `pynput` / `evdev` - Keyboard/mouse input handling
-- `PyYAML` - Configuration management
+## Dependencies Overview
 
-**Development:**
-- `pytest` - Testing framework
-- `ruff` - Linter and formatter
+- `faster-whisper`
+- `ctranslate2`
+- `PyQt5` *(PyQt6 planned)*
+- `sounddevice`
+- `webrtcvad`
+- `pynput` / `evdev`
+- `PyYAML`
 
-See [requirements.txt](requirements.txt) for complete list and version constraints.
+See `requirements.txt` for full details.
+
+---
 
 ## Running
 
-There are two ways to launch:
-
-- Fast path (GPU, recommended):
+### GPU (Recommended)
 
 ```bash
 chmod +x vociferous.sh
 ./vociferous.sh
 ```
 
-This wrapper exports `LD_LIBRARY_PATH` so `ctranslate2` can load cuDNN/cuBLAS from the venv, and sets `RUST_LOG=error` to suppress verbose Vulkan warnings.
-
-- Standard path (CPU or if your system libraries already resolve correctly):
+### CPU
 
 ```bash
 python scripts/run.py
 ```
 
-If you see a warning in the console about CUDA libraries not being discoverable, use `./vociferous.sh`.
+CPU transcription is supported but significantly slower. NVIDIA GPUs are recommended for practical real‑time use.
 
-## Usage
+---
 
-1. **Start recording**: Press the activation key (default: Right Alt)
-2. **Speak**: Voice Activity Detection captures your speech
-3. **Stop recording**: Press the key again (or VAD auto-stops after silence)
-4. **Paste**: Transcription is copied to clipboard - paste with Ctrl+V
+## Usage Workflow
 
-### Window Controls
+1. Press the activation hotkey (default: **Alt**)
+2. Speak
+3. Press the hotkey again or allow VAD to stop recording
+4. Transcription is copied to the clipboard
 
-The custom title bar provides:
-- **Drag anywhere** on the title to move the window (Wayland-native on supported compositors)
-- **Double-click** to maximize/restore
-- **Minimize/Maximize/Close** buttons with styled hover effects
+### Notes
+
+- Only **press‑to‑toggle hotkey mode** is supported
+- Default Alt binding currently registers **both Alt keys**
+- Status text displays **Recording** or **Transcribing** only
+- No visual dot indicators are used
+- A **trailing space is always appended** to transcriptions (non‑configurable)
+
+---
+
+## Clipboard Behavior
+
+Vociferous **always outputs to the clipboard**.
+
+- Email composition: paste into client
+- Document writing: paste into editor
+- Terminal usage: paste manually (Ctrl+Shift+V)
+
+Vociferous **does not inject input** and does not simulate typing.
+
+---
 
 ## Configuration
 
-Settings are defined in `src/config_schema.yaml`.
+Defined in `src/config_schema.yaml`.
 
-- `model_options.device`: `auto` (auto-detect), `cuda` (GPU), or `cpu`
-- `model_options.compute_type`: `float16` (GPU, fastest), `float32` (any), or `int8` (CPU, quantized)
-- `model_options.language`: ISO-639-1 language code (e.g., `en`, `es`, `de`)
-- `recording_options.activation_key`: Key to trigger recording
+Key options include:
 
-### Graphical Settings
+- `model_options.device`: `auto`, `cuda`, `cpu`
+- `model_options.compute_type`: `float16`, `float32`, `int8`
+- `model_options.language`
+- `recording_options.activation_key`
 
-Open the settings dialog from:
+All settings apply immediately.
 
-- **System tray**: Right-click → Settings...
-- **Main window**: Settings menu → Preferences
+---
 
-All options are editable, including the activation hotkey. Changes apply immediately.
+## History
 
-### Hotkey Rebinding
+Stored at:
 
-1. Open Settings
-2. Click **Change...** next to Activation Key
-3. Press the new key combination
-4. Click **OK** or **Apply**
-
-The new hotkey is active instantly – no restart required.
-
-## History Management
-
-Transcription history is stored at `~/.config/vociferous/history.jsonl`.
-
-### Features
-
-- **Collapsible day groups**: Click headers to expand/collapse (past days auto-collapse)
-- **Single-click to edit**: Load any entry into the editor panel
-- **Double-click to copy**: Quick copy to clipboard
-- **Delete key**: Remove selected entry from UI and persistent storage
-- **Context menu**: Right-click entries to Copy or Delete
-- **File watching**: History auto-reloads when the JSONL file changes externally
-- **Open History File**: Menu action to open the JSONL file in your default editor
-- **Export**: Save history to txt, csv, or markdown format (disabled when empty)
-- **Clear All**: Remove all history with confirmation dialog
-- **Auto-rotation**: Oldest entries removed when exceeding limit (default 1000)
-
-### Export Formats
-
-| Format | Description |
-|--------|-------------|
-| `.txt` | Timestamped entries, one per block |
-| `.csv` | Columns: Timestamp, Text, Duration (ms) |
-| `.md` | Day headers (##), time headers (###), text content |
-
-## Clipboard
-
-Completed transcriptions are automatically copied to the clipboard. Paste with Ctrl+V wherever needed.
-
-On Wayland, `wl-clipboard` provides the clipboard backend:
-
-```bash
-sudo apt install -y wl-clipboard
+```
+~/.config/vociferous/history.jsonl
 ```
 
-## Architecture
+Supports:
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed technical documentation.
+- Editing
+- Deletion with persistence
+- Auto‑reload
+- Export (TXT / CSV / Markdown)
 
-## License
+---
 
-The Unlicense - see [LICENSE](LICENSE) for details.
+## Performance Characteristics
+
+- GPU VRAM usage is consistent with model size and verified
+- CPU fallback is supported but slower
+- Background resource usage aligns with expectations for Whisper inference
+
+---
+
+## Known Issues / Planned Updates (v1.1.1)
+
+- Alt key binding temporarily blocks normal Alt usage
+- Start/Stop UI button planned
+- PyQt6 migration planned
+- Status text may be expanded in future versions
+
+---
+
+## Further Reading
+
+Additional documentation and technical deep dives are available in the `docs/` directory.
+
+---
+
+**Version:** 1.1.1 (documentation patch)

@@ -1,55 +1,7 @@
 """
-Keyboard and Mouse Input Handling Module
-=========================================
+Keyboard and mouse input handling with pluggable backends.
 
-This module provides a pluggable input handling system that abstracts away the
-differences between Linux input backends (evdev for Wayland, pynput for X11).
-
-Design Patterns Used
---------------------
-1. **Strategy Pattern**: Multiple input backends (evdev, pynput) implement the
-   same interface, allowing runtime selection based on environment.
-
-2. **Protocol (Structural Subtyping)**: Using Python's `Protocol` instead of
-   ABC enables duck typing - any class with the right methods works, no
-   inheritance required. This is more Pythonic than Java-style interfaces.
-
-3. **Observer Pattern**: Callbacks are registered for activation/deactivation
-   events, decoupling input detection from business logic.
-
-4. **Dataclass with Slots**: `KeyChord` uses `@dataclass(slots=True)` for
-   memory efficiency and auto-generated `__init__`, `__repr__`, etc.
-
-Why Two Backends?
------------------
-- **evdev**: Direct Linux kernel interface. Works on Wayland and X11, but
-  requires the user to be in the `input` group. Most reliable option.
-
-- **pynput**: Uses X11 APIs. Easy to set up but doesn't work on Wayland
-  (the display server blocks cross-application input monitoring).
-
-Python 3.12+ Features Demonstrated
-----------------------------------
-- `@runtime_checkable Protocol`: Enables isinstance() checks on duck-typed protocols
-- `@dataclass(slots=True)`: Memory-efficient dataclasses with faster attribute access
-- `match/case` statements: Clean event type handling and pattern matching
-- Modern type hints: `set[KeyCode | frozenset[KeyCode]]` union in generics
-
-Architecture
-------------
-    ┌─────────────────┐
-    │   KeyListener   │  ← Manages backends, tracks key chords
-    └────────┬────────┘
-             │ uses
-    ┌────────┴────────┐
-    │  InputBackend   │  ← Protocol (interface)
-    │    (Protocol)   │
-    └────────┬────────┘
-             │ implemented by
-    ┌────────┴────────┬──────────────────┐
-    │  EvdevBackend   │   PynputBackend  │
-    │  (Wayland/X11)  │   (X11 only)     │
-    └─────────────────┴──────────────────┘
+Uses Protocol pattern for backends (evdev for Wayland, pynput for X11).
 """
 import logging
 import threading
@@ -64,15 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class InputEvent(Enum):
-    """
-    Enumeration of input event types.
-
-    Using `auto()` automatically assigns incrementing integer values.
-    This is preferred over manual numbering because:
-    1. Adding new events doesn't require renumbering
-    2. The actual values don't matter - we compare enum members, not values
-    3. Less error-prone (no duplicate values possible)
-    """
+    """Input event types for key press/release detection."""
     KEY_PRESS = auto()
     KEY_RELEASE = auto()
     MOUSE_PRESS = auto()
@@ -80,19 +24,7 @@ class InputEvent(Enum):
 
 
 class KeyCode(Enum):
-    """
-    Unified key code enumeration across all input backends.
-
-    This abstraction layer maps backend-specific key codes (evdev scancodes,
-    pynput Key objects) to a common set of identifiers. This enables:
-
-    1. Backend Independence: KeyChord works with any backend
-    2. Configuration Portability: Saved hotkeys work across backends
-    3. Testing: Unit tests can use KeyCode directly without mocking backends
-
-    The full list includes modifiers, function keys, letters, numbers,
-    special keys, media keys, and mouse buttons for comprehensive coverage.
-    """
+    """Unified key codes across all input backends."""
     # Modifier keys
     CTRL_LEFT = auto()
     CTRL_RIGHT = auto()
@@ -282,111 +214,32 @@ class KeyCode(Enum):
 
 @runtime_checkable
 class InputBackend(Protocol):
-    """
-    Protocol defining the interface for input backends.
-
-    In Python, a Protocol is a way to define an interface using structural
-    subtyping (duck typing) rather than nominal subtyping (inheritance).
-
-    Key Concepts:
-    -------------
-    - **Protocol vs ABC**: Unlike Abstract Base Classes, you don't need to
-      inherit from Protocol. Any class with matching methods is compatible.
-
-    - **@runtime_checkable**: This decorator enables `isinstance()` checks:
-      `isinstance(my_backend, InputBackend)` returns True if the object
-      has all required methods, even without explicit inheritance.
-
-    - **Ellipsis (...)**: In Protocol methods, `...` indicates the method
-      signature without implementation. It's NOT the same as `pass` - it
-      signals "this is a protocol stub".
-
-    Why Protocol over ABC here?
-    ---------------------------
-    The backends (EvdevBackend, PynputBackend) have different internal
-    implementations and state. Protocol lets them be completely independent
-    classes while still being type-safe. This is particularly useful when
-    testing - you can create a mock backend without inheriting anything.
-
-    Example:
-        >>> class MockBackend:
-        ...     @classmethod
-        ...     def is_available(cls): return True
-        ...     def start(self): pass
-        ...     def stop(self): pass
-        ...     def on_input_event(self, event): pass
-        >>> isinstance(MockBackend(), InputBackend)  # True!
-    """
+    """Protocol defining the interface for input backends."""
 
     @classmethod
     def is_available(cls) -> bool:
-        """
-        Check if this input backend is available on the current system.
-
-        Returns:
-            bool: True if the backend is available, False otherwise.
-        """
+        """Check if this backend is available on the current system."""
         ...
 
     def start(self) -> None:
-        """
-        Start the input backend.
-
-        Initialize resources and begin listening for input events.
-        """
+        """Start listening for input events."""
         ...
 
     def stop(self) -> None:
-        """
-        Stop the input backend.
-
-        Clean up resources and stop listening for input events.
-        """
+        """Stop listening and clean up resources."""
         ...
 
     def on_input_event(self, event: tuple[KeyCode, InputEvent]) -> None:
-        """
-        Handle an input event.
-
-        Called when an input event is detected.
-
-        Args:
-            event: Tuple of (KeyCode, InputEvent) for the key and event type.
-        """
+        """Handle an input event (KeyCode, InputEvent)."""
         ...
 
 @dataclass(slots=True)
 class KeyChord:
     """
     Represents a hotkey combination (e.g., Ctrl+Shift+Space).
-
-    This class tracks which keys are currently pressed and determines when
-    the entire chord is active (all required keys held simultaneously).
-
-    Dataclass Features Used:
-    ------------------------
-    - **slots=True**: Creates `__slots__` instead of `__dict__` for attributes.
-      This saves ~50 bytes per instance and speeds up attribute access.
-      Perfect for objects created frequently (every key event creates one).
-
-    - **field(default_factory=set)**: For mutable defaults (lists, sets, dicts),
-      you MUST use `field(default_factory=...)`. Using `pressed_keys: set = set()`
-      would share one set across ALL instances (a classic Python gotcha).
-
-    Type Hint Explanation:
-    ----------------------
-    `keys: set[KeyCode | frozenset[KeyCode]]`
-
-    This allows two types of elements in the keys set:
-    1. `KeyCode` - A specific key (e.g., `KeyCode.SPACE`)
-    2. `frozenset[KeyCode]` - Any key from a group (e.g., either Ctrl key)
-
-    Why frozenset? Because `{KeyCode.CTRL_LEFT, KeyCode.CTRL_RIGHT}` represents
-    "either control key", and we need it hashable (sets require hashable items).
-
-    Attributes:
-        keys: The keys/key-groups required for this chord
-        pressed_keys: Currently held keys (updated on each event)
+    
+    keys can contain KeyCode for specific keys, or frozenset[KeyCode]
+    for "any of these" (e.g., either Ctrl key).
     """
     keys: set[KeyCode | frozenset[KeyCode]]
     pressed_keys: set[KeyCode] = field(default_factory=set)
@@ -409,39 +262,7 @@ class KeyChord:
         )
 
 class KeyListener:
-    """
-    Manages input backends and listens for specific key combinations.
-
-    This is the main entry point for hotkey detection. It:
-    1. Discovers available backends (evdev, pynput)
-    2. Selects the best one based on configuration
-    3. Tracks key state to detect chord activation
-    4. Dispatches callbacks when hotkeys are pressed/released
-
-    Design Decisions:
-    -----------------
-    - **Callback-based**: Instead of returning events, we use callbacks.
-      This decouples the listener from the rest of the app - the main module
-      doesn't need to poll or manage threads.
-
-    - **Backend Auto-selection**: By default, evdev is preferred (works on
-      Wayland), but the user can override in config.
-
-    - **Chord Abstraction**: Keys are grouped into "chords" (combinations).
-      This supports both single-key hotkeys (`) and combos (Ctrl+Shift+R).
-
-    Thread Safety:
-    --------------
-    The KeyListener itself doesn't need locks - backend selection happens
-    once at startup, and callback lists aren't modified after init.
-    The backends handle their own threading (evdev runs a listener thread).
-
-    Attributes:
-        backends: List of available InputBackend implementations
-        active_backend: The currently selected backend
-        key_chord: The hotkey combination being monitored
-        callbacks: Dict mapping event names to callback functions
-    """
+    """Manages input backends and detects hotkey chord activation."""
 
     def __init__(self) -> None:
         """Initialize the KeyListener with backends and activation keys."""
@@ -610,54 +431,10 @@ class KeyListener:
 
 class EvdevBackend:
     """
-    Input backend using the Linux evdev subsystem for raw device access.
-
-    This is the PRIMARY backend for Wayland environments. It reads directly
-    from /dev/input/* device files, bypassing the display server entirely.
-
-    Why evdev?
-    ----------
-    On Wayland, applications can't snoop on global keyboard input (by design,
-    for security). But evdev reads from the Linux kernel's input subsystem,
-    which works regardless of display server. The tradeoff: you need
-    appropriate permissions (typically `input` group membership).
-
-    How It Works:
-    -------------
-    1. Enumerate all /dev/input/event* devices
-    2. Spawn a daemon thread that select()s on all devices
-    3. When any device has data, read events and translate to KeyCode
-    4. Call on_input_event callback with (KeyCode, InputEvent) tuple
-
-    Thread Architecture:
-    --------------------
-    - Main thread: Creates backend, calls start()/stop()
-    - Listener thread (daemon): Runs _listen_loop(), handles I/O
-    - stop_event: threading.Event for graceful shutdown
-
-    The daemon=True flag means the thread dies automatically when the main
-    program exits, preventing orphaned background processes.
-
-    Pattern Matching in Error Handling:
-    ------------------------------------
-    The _handle_device_error method uses match/case to categorize errors:
-
-    ```python
-    match error:
-        case BlockingIOError() if error.errno == errno.EAGAIN:
-            return True  # Expected, device is fine
-        case OSError() if error.errno in (errno.EBADF, errno.ENODEV):
-            return False  # Device disconnected
-    ```
-
-    This is cleaner than chained isinstance() + getattr() checks.
-
-    Security Note:
-    --------------
-    Reading /dev/input requires the `input` group. This is a privileged
-    operation - the user could read any keyboard input, including passwords.
-    This is why X11's global keyboard hooks are considered insecure by
-    comparison to Wayland's stricter security model.
+    Input backend using Linux evdev for raw device access.
+    
+    Primary backend for Wayland. Reads from /dev/input/* directly,
+    requires user to be in 'input' group.
     """
 
     @classmethod
@@ -1009,52 +786,9 @@ class EvdevBackend:
 
 class PynputBackend:
     """
-    Input backend using pynput for X11-style keyboard/mouse monitoring.
-
-    This is the FALLBACK backend, primarily for X11 environments. On Wayland,
-    pynput often fails or only works with XWayland applications.
-
-    How pynput Works:
-    -----------------
-    Under the hood, pynput uses:
-    - X11: XRecord extension (hooks into X server event stream)
-    - Wayland: Falls back to uinput or fails entirely
-    - macOS: Quartz event taps
-    - Windows: Low-level keyboard/mouse hooks
-
-    Why Keep Both Backends?
-    -----------------------
-    1. **Fallback**: If evdev isn't available (no permissions, not Linux)
-    2. **Simplicity**: pynput doesn't require input group membership
-    3. **Compatibility**: Some users run X11 where pynput works fine
-
-    Listener Pattern:
-    -----------------
-    pynput uses callbacks rather than polling:
-
-    ```python
-    self.keyboard_listener = keyboard.Listener(
-        on_press=self._on_keyboard_press,
-        on_release=self._on_keyboard_release
-    )
-    self.keyboard_listener.start()  # Spawns internal thread
-    ```
-
-    This is the Observer pattern - we register callbacks, and pynput's
-    internal thread calls them when events occur.
-
-    Key Translation:
-    ----------------
-    pynput's Key enum is different from our KeyCode enum. The _create_key_map
-    method builds a translation dict. This abstraction means the rest of
-    the app doesn't care which backend is active - both emit the same
-    (KeyCode, InputEvent) tuples.
-
-    Limitation:
-    -----------
-    On Wayland without XWayland, pynput may not receive any events or may
-    throw an exception at startup. That's why is_available() checks for
-    the import, but actual functionality depends on the display server.
+    Input backend using pynput for X11 keyboard/mouse monitoring.
+    
+    Fallback backend. Works on X11, may fail on pure Wayland.
     """
 
     @classmethod
