@@ -1,39 +1,28 @@
-# Python
+# Python bytecode / caches
 __pycache__/
 *.py[cod]
-*.so
+*$py.class
 
-# Distribution / packaging
-build/
-dist/
-*.egg-info/
-
-# Virtual environments
-.venv/
-venv/
-
-# Testing
+# Test/coverage
 .pytest_cache/
 .coverage
-.coverage.*
 htmlcov/
+coverage.xml
 
-# Lint
-.ruff_cache/
+# Environments / builds
+.venv/
+venv/
+env/
+.tox/
+dist/
+build/
+*.egg-info/
 
-# IDE
-.idea/
-.vscode/
-.github/
-*.swp
-*.swo
-
-# OS cruft
+# OS / editor
 .DS_Store
 Thumbs.db
-
-# Project configuration
-config.yaml
-
-# Logs
-*.log
+.idea/
+.vscode/
+.ruff_cache/
+# Local config (prefer example/default in repo)
+src/config.yaml
