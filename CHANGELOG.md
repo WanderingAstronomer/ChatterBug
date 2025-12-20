@@ -481,4 +481,18 @@ All files from the previous architecture deleted:
 
 The v0.1-v0.8 architecture served as exploration of what a full-featured transcription tool could look like. This rewrite takes the lessons learned and applies them to a simpler, more focused tool.
 
-0123
+012
+
+
+
+
+sdfasdf
+s
+df
+sdf
+f
+sd
+
+d
+df
+dfdfd
